@@ -1,0 +1,438 @@
+doctype html
+html(lang="en")
+  head
+    title Spotify App
+    meta(charset='UTF-8')
+    meta(name='viewport' content='width=device-width, initial-scale=1, shrink-to-fit=no')
+    link(rel='stylesheet' href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css')
+    script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js")
+    script(src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js")
+    style.
+      :root {
+        --bs-dark: #121212;
+        --bs-gray-dark: #181818;
+        --bs-gray: #282828;
+        --bs-green: #1DB954;
+        --bs-light-gray: #b3b3b3;
+        --bs-font-size-base: 0.92rem;
+        --bs-slider-bg: #535353;
+        --bs-slider-thumb: #fff;
+      }
+      body {
+        background-color: var(--bs-dark);
+        color: var(--bs-light-gray);
+        font-size: var(--bs-font-size-base);
+      }
+      .navbar, .navbar-brand, .nav-link {
+        background-color: var(--bs-gray-dark);
+        border: none;
+        color: var(--bs-light-gray);
+      }
+      .navbar-brand {
+        font-weight: bold;
+        color: var(--bs-green);
+      }
+      .nav-link.active {
+        color: var(--bs-green);
+        background-color: var(--bs-dark);
+      }
+      .tab-content {
+        background-color: var(--bs-gray);
+      }
+      .playhead-slider {
+        -webkit-appearance: none;
+        width: 100%;
+        height: 8px;
+        border-radius: 5px;
+        background: var(--bs-slider-bg);
+        outline: none;
+        opacity: 0.7;
+        -webkit-transition: .2s;
+        transition: opacity .2s;
+      }
+      .playhead-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 15px;
+        height: 15px;
+        border-radius: 50%;
+        background: var(--bs-slider-thumb);
+        cursor: pointer;
+      }
+      .playhead-slider::-moz-range-thumb {
+        width: 15px;
+        height: 15px;
+        border-radius: 50%;
+        background: var(--bs-slider-thumb);
+        cursor: pointer;
+      }
+      .current-track {
+        background-color: var(--bs-gray-dark);
+        padding: 1rem;
+        border-radius: .25rem;
+        margin-bottom: 1rem;
+      }
+      .track-info {
+        margin-bottom: .5rem;
+      }
+      .track-info h5, .track-info p {
+        margin-bottom: 0;
+      }
+      .page-link {
+        color: var(--bs-light-gray);
+        background-color: var(--bs-gray-dark);
+      }
+      .page-link:hover {
+        background-color: var(--bs-gray);
+      }
+      .pagination .active .page-link {
+        background-color: var(--bs-green);
+        border-color: var(--bs-green);
+      }
+      .btn-primary {
+          background-color: #1DB954;
+          border-color: #1DB954;
+      }
+  body
+    nav.navbar.navbar-expand-lg.navbar-dark
+      .container-fluid
+        a.navbar-brand(href='#')
+          img(src='https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/768px-Spotify_logo_without_text.svg.png' alt='Spotify Logo' width='20' height='20' class='d-inline-block align-text-top')
+        button.navbar-toggler(type='button' data-bs-toggle='collapse' data-bs-target='#navbarNavDropdown' aria-controls='navbarNavDropdown' aria-expanded='false' aria-label='Toggle navigation')
+          span.navbar-toggler-icon
+    .container-fluid
+      if recentTrack
+        .current-track
+          img(src=recentTrack.artistImageUrl alt="Artist Image" width="100" height="100" id="artist-image-element-id")
+          .track-info
+            if recentTrack.artistName
+              p#current-artist-name 
+                a(href=`https://open.spotify.com/artist/${recentTrack.artistId}` target='_blank') #{recentTrack.artistName}
+            if recentTrack.trackName
+              h5#current-track-name #{recentTrack.trackName}
+            if recentTrack.albumName
+              p#current-album-name #{recentTrack.albumName}
+          input.playhead-slider#playhead(type="range" value="0" min="0" max="100")
+    ul.nav.nav-tabs(role='tablist')
+      li.nav-item
+        a.nav-link(href='#history', data-bs-toggle='tab', role='tab', aria-controls='history', aria-selected='false') History
+      li.nav-item
+        a.nav-link(href='#queue', data-bs-toggle='tab', role='tab', aria-controls='queue', aria-selected='false') Queue
+      // tab for searching
+      li.nav-item
+        a.nav-link(href='#search', data-bs-toggle='tab', role='tab', aria-controls='search', aria-selected='false') Search
+      // nav-item for playlist tab for taking a playlist link and the server will proccess it and return the tracks
+      li.nav-item
+        a.nav-link.active(href='#playlist', data-bs-toggle='tab', role='tab', aria-controls='playlist', aria-selected='true') Playlist
+
+    .tab-content
+      #history.tab-pane.fade(role='tabpanel', aria-labelledby='history-tab')
+        h1.text-spotify.mb-3
+        .table-responsive
+          table#historyTableBody.table.table-dark.table-hover.align-middle
+            thead
+              tr
+                th(style='width: 10%') Timestamp
+                th(style='width: 45%') Track Name
+                th(style='width: 45%') Artist Name
+            tbody
+              each track in tracks
+                tr
+                  td.timestamp= new Date(track._timestamp).toLocaleString('en-US', { timeZone: 'CST6CDT' })
+                  td
+                    a(href=`https://open.spotify.com/track/${track.trackId}` target='_blank')= track.trackName
+                  td
+                    img(src=track.artistImageUrl alt="Artist" style="width: 30px; height: 30px; border-radius: 50%; margin-right: 5px;")
+                    a(href=`https://open.spotify.com/artist/${track.artistId}` target='_blank')= track.artistName
+        nav.aria-label='Page navigation'
+          ul.pagination.pagination-sm.justify-content-center.my-4
+            - let totalPages = Math.ceil(totalTracks / pageSize);
+            - let startPage = Math.max(1, page - 2);
+            - let endPage = Math.min(totalPages, page + 2);
+            if page > 3
+              li.page-item
+                a.page-link(href=`?page=1`) 1
+              li.page-item.disabled
+                span.page-link ...
+            - for(let i = startPage; i <= endPage; i++)
+              li.page-item(class=i === page ? 'active' : '')
+                a.page-link(href=`?page=${i}`)= i
+            if page < totalPages - 2
+              li.page-item.disabled
+                span.page-link ...
+              li.page-item
+                a.page-link(href=`?page=${totalPages}`)= totalPages
+      #queue.tab-pane.fade(role='tabpanel', aria-labelledby='queue-tab')
+        h1.text-spotify.mb-3 Queue
+        .table-responsive#queueTableWrapper
+          table.table.table-striped
+            thead
+              tr
+                th Queue Number
+                th Track Name
+                th Artist Name
+                th Track Length
+                th Artist Image
+            tbody#queueTableBody
+      #search.tab-pane.fade(role='tabpanel', aria-labelledby='search-tab')
+        h1.text-spotify.mb-3 Search
+        .input-group.mb-3
+          input.form-control(type='text', id='searchInput', placeholder='Search for a song', aria-label='Search for a song')
+          button.btn.btn-success(type='button', id='searchButton') Search
+        .table-responsive
+          table.table.table-dark.table-hover
+            thead
+              tr
+                th Song
+                th Artist
+                th Action
+            tbody#searchResultsTable
+              // Search results will be appended here
+      #playlist.tab-pane.fade.show.active(role='tabpanel', aria-labelledby='playlist-tab')
+        h1.text-spotify.mb-3 Playlist
+        .input-group.mb-3
+          input.form-control(type='text', id='playlistInput', placeholder='Enter playlist URL', aria-label='Enter playlist ID')
+          button.btn.btn-success(type='button', id='playlistButton') Upload Playlist
+        .table-responsive
+          table.table.table-dark.table-hover
+            thead
+              tr
+                th Song
+                th Artist
+                th Track Length
+                th Content warning
+            tbody#playlistResultsTable
+              // Search results will be appended here
+              script.
+                $(document).ready(function() {
+                  var ws;
+                  var playheadInterval;
+
+                  $('.nav.nav-tabs .nav-link').on('click', function(e) {
+                    e.preventDefault();
+                    var tabTarget = $(this).attr('href');
+
+                    if (tabTarget === '#queue' && ws && ws.readyState === WebSocket.OPEN) {
+                      ws.send(JSON.stringify({ action: 'get-queue' }));
+                    }
+
+                    $('.nav.nav-tabs .nav-link.active').removeClass('active');
+                    $('.tab-content .tab-pane.active').removeClass('show active');
+
+                    $(this).addClass('active');
+                    $(tabTarget).addClass('show active');
+                  });
+
+                  function startWebSocket() {
+                    ws = new WebSocket('wss://spotify.lucasfarmer.com');
+                    ws.onopen = function() {
+                      console.log('WebSocket connection established');
+                      setInterval(function() {
+                        if (ws.readyState === WebSocket.OPEN) {
+                          ws.send(JSON.stringify({ action: 'ping' }));
+                        }
+                      }, 30000);
+                    };
+
+                    ws.onerror = function(error) {
+                      console.error('WebSocket error:', error);
+                    };
+
+                    ws.onclose = function() {
+                      console.log('WebSocket connection closed. Attempting to reconnect...');
+                      setTimeout(startWebSocket, 3000);
+                    };
+
+                    ws.onmessage = function(event) {
+                      var data = JSON.parse(event.data);
+                      if (data.action === 'pong') {
+                        console.log('Received pong message');
+                        return;
+                      }
+                      switch(data.type) {
+                        case 'search-results':
+                          displaySearchResults(data.results);
+                          break;
+                        case 'track-change':
+                          updateCurrentTrack(data.track);
+                          updateTrackTable(data.track);
+                          updatePlayhead(data.progress_ms, data.track.trackDuration);
+                          break;
+                        case 'queue-data':
+                          updateQueueTable(data.queueItems);
+                          break;
+                        case 'playlist-data':
+                          console.log('Received playlist items:', data.playlistItems);
+                          displayPlaylistTracks(data.playlistItems);
+                          break;
+                        default:
+                          console.log('Unknown message type:', data.type);
+                      }
+                    };
+                  }
+
+                  // Current Track
+                  function updateCurrentTrack(track) {
+                    var artistNameElement = $('#current-artist-name');
+                    var trackNameElement = $('#current-track-name');
+                    var albumNameElement = $('#current-album-name');
+                    var artistImageElement = $('#artist-image-element-id');
+                    var playheadElement = $('#playhead');
+                    if (artistNameElement.length) artistNameElement.text(track.artistName);
+                    if (trackNameElement.length) trackNameElement.text(track.trackName);
+                    if (albumNameElement.length) albumNameElement.text(track.albumName);
+                    if (artistImageElement.length) artistImageElement.attr('src', track.artistImageUrl);
+                    if (playheadElement.length) playheadElement.val(0);
+                  }
+
+                  function updateTrackTable(track) {
+                    var newRowHtml = `<tr>
+                                        <td class="timestamp">${new Date().toLocaleString('en-US', { timeZone: 'CST6CDT' })}</td>
+                                        <td><a href="https://open.spotify.com/track/${track.trackId}" target="_blank">${track.trackName}</a></td>
+                                        <td><img src="${track.artistImageUrl}" alt="${track.artistName}" style="width: 30px; height: 30px; border-radius: 50%; margin-right: 5px;">
+                                            <a href="https://open.spotify.com/artist/${track.artistId}" target="_blank">${track.artistName}</a>
+                                        </td>
+                                      </tr>`;
+                    $('#historyTableBody').prepend(newRowHtml);
+                  }
+
+                  function updatePlayhead(progress_ms, trackDuration) {
+                    const playheadSlider = document.getElementById('playhead');
+                    if (!playheadSlider) return;
+
+                    clearInterval(playheadInterval);
+
+                    playheadInterval = setInterval(() => {
+                      const playheadPercentage = (progress_ms / trackDuration) * 100;
+                      playheadSlider.value = playheadPercentage;
+                      progress_ms += 1000;
+                      if (progress_ms > trackDuration) {
+                        clearInterval(playheadInterval);
+                      }
+                    }, 1000);
+                  }
+
+                  function formatTrackDuration(durationMs) {
+                      var minutes = Math.floor(durationMs / 60000);
+                      var seconds = ((durationMs % 60000) / 1000).toFixed(0);
+                      return minutes + ":" + (seconds < 10 ? '0' : '') + seconds;
+                  }
+
+                  // Queue
+                  function updateQueueTable(queueItems) {
+                    var queueTableBody = $('#queueTableBody');
+                    queueTableBody.empty();
+                    if (Array.isArray(queueItems.queue)) {
+                      queueItems.queue.forEach(function(track, index) {
+                        var rowHtml = `<tr>
+                                        <td>${index + 1}</td>
+                                        <td>${track.name}</td>
+                                        <td>${track.artists.map(artist => artist.name).join(", ")}</td>
+                                        <td>${formatTrackDuration(track.duration_ms)}</td>
+                                        <td>${track.album && track.album.images && track.album.images.length ? `<img src="${track.album.images[0].url}" alt="${track.album.name}" style='height: 50px;'>` : ''}</td>
+                                      </tr>`;
+                        queueTableBody.append(rowHtml);
+                      });
+                    } else {
+                      console.error('Queue data is not an array');
+                    }
+                  }
+
+                  // Search
+                  function displaySearchResults(results) {
+                    var resultsTable = $('#searchResultsTable');
+                    resultsTable.empty();
+
+                    results.forEach(function(item) {
+                      var songLink = $('<a>').attr('href', item.external_urls.spotify).text(item.name);
+                      var songName = $('<td>').append(songLink);
+                      var artistName = $('<td>').text(item.artists[0].name);
+
+                      var actionTd = $('<td>');
+                      if (item.explicit) {
+                        var explicitLabel = $('<span>').addClass('badge bg-danger').text('Explicit');
+                        actionTd.append(explicitLabel);
+                      } else {
+                        var addToQueueButton = $('<button>').addClass('btn btn-sm btn-success').text('Add to Queue');
+                        addToQueueButton.on('click', function() {
+                          var confirmQueue = confirm('Are you sure you want to add this song to the queue?');
+                          if (confirmQueue) {
+                            ws.send(JSON.stringify({ action: 'add-to-queue', trackUri: item.uri }));
+                          }
+                        });
+                        actionTd.append(addToQueueButton);
+                      }
+
+                      var tr = $('<tr>').append(songName, artistName, actionTd);
+                      resultsTable.append(tr);
+                    });
+                  }
+
+                  $('#searchButton').on('click', function() {
+                    var searchQuery = $('#searchInput').val().trim();
+                    if (searchQuery.length > 0) {
+                      ws.send(JSON.stringify({ action: 'search', query: searchQuery }));
+                      $('#searchInput').val('');
+                    }
+                  });
+
+                  $('#searchInput').on('keypress', function(event) {
+                    if (event.which === 13) {
+                      var searchQuery = $(this).val().trim();
+                      if (searchQuery.length > 0) {
+                        ws.send(JSON.stringify({ action: 'search', query: searchQuery }));
+                        $(this).val('');
+                      }
+                    }
+                  });
+
+                  // Playlist
+                  function displayPlaylistTracks(playlistItems) {
+                    var playlistTableBody = $('#playlistResultsTable');
+                    playlistTableBody.empty();
+                    console.log('Playlist items:', playlistItems);
+                    if (Array.isArray(playlistItems)) {
+                        playlistItems.forEach(function(trackItem) {
+                            var track = trackItem.track;
+                            var rowHtml = `<tr>
+                                            <td>
+                                              <div>
+                                                <img src="${track.album.images[2].url}" alt="${track.artists[0].name}" style="height: 50px;">
+                                                <br>
+                                                <span>${track.name}</span>
+                                              </div>
+                                            </td>
+                                            <td>${track.artists[0].name}</td>
+                                            <td>${formatTrackDuration(track.duration_ms)}</td>
+                                            <td>
+                                              ${track.explicit ? '<i class="fas fa-exclamation-triangle"></i>' : ''}
+                                            </td>
+                                          </tr>`;
+                            playlistTableBody.append(rowHtml);
+                        });
+                    } else {
+                        console.error('Playlist data is not an array', playlistItems);
+                    }
+                  }
+
+                  $('#playlistButton').on('click', function() {
+                    var playlistId = $('#playlistInput').val().trim();
+                      if (playlistId.length > 0) {
+                        ws.send(JSON.stringify({ action: 'get-playlist', playlistId: playlistId }));
+                        $(this).val('');
+                      }
+                  });
+                  
+                  $('#playlistInput').on('keypress', function(event) {
+                    if (event.which === 13) {
+                      var playlistId = $(this).val().trim();
+                      if (playlistId.length > 0) {
+                        ws.send(JSON.stringify({ action: 'get-playlist', playlistId: playlistId }));
+                        $(this).val('');
+                      }
+                    }
+                  });
+
+                  startWebSocket();
+                });
+

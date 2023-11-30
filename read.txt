@@ -1,0 +1,10 @@
+-add que button to history
+-play song being queued if nothing is in queue or currently playing
+-filter history to one week/day
+-no same song in 12 hours
+-no songs longer that 10 minutes
+-make history searchable
+-playlist maker
+-suggested playlists
+-unify search history, queue, and playlist
+-30 second preview of song on search and history
