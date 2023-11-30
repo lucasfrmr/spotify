@@ -7,7 +7,7 @@ REPO_DESCRIPTION="My new project"  # Replace with your repository description
 
 REPO_NAME=$(basename "$(pwd)")
 # Navigate to your project directory (Update with your project path)
-cd /path/to/your/project
+cd /usr/share/nginx/html/spotify
 
 # Initialize Git and set configurations
 git init
