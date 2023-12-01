@@ -54,8 +54,19 @@ wss.on('connection', (ws) => {
                 const playlistData = await getPlaylistData(data.playlistId);
                 ws.send(JSON.stringify({ type: 'playlist-data', playlistItems: playlistData }));
                 break;
-                
-    
+            case 'submit-playlist':
+                await handlePlaylistSubmission(data);
+                break;
+            case 'get-playlists':
+                try {
+                    const playlists = await db.collection('playlists').find({}).toArray();
+                    ws.send(JSON.stringify({ type: 'playlist-data', playlists }));
+                } catch (err) {
+                    console.error('Error fetching playlists:', err);
+                    // Optionally, send an error message back to the client
+                    ws.send(JSON.stringify({ type: 'error', message: 'Failed to fetch playlists' }));
+                }
+                break;
         }
     });
 
@@ -73,9 +84,12 @@ setInterval(() => {
 }, 4e4);
 
 function updateSong(song, progress_ms) {
+    console.log('Updating song:', song);
     const songData = {
         type: 'track-change',
         track: {
+            trackId: song.trackId,
+            artistId: song.artistId,
             artistName: song.artistName,
             trackName: song.trackName,
             albumName: song.albumName,
@@ -226,6 +240,33 @@ async function getPlaylistData(playlistUrl) {
     } catch (err) {
         console.error('Error getting playlist data:', err);
         return [];
+    }
+}
+
+async function handlePlaylistSubmission(data) {
+    try {
+        const { user, playlistName, tracks } = data;
+        // Create a playlist document
+        const playlistDocument = {
+            userName: user,
+            playlistName: playlistName,
+            tracks: tracks.map(track => ({
+                trackId: track.id,
+                trackName: track.name,
+                trackDuration: track.duration_ms,
+                artistId: track.artists[0].id,
+                artistName: track.artists[0].name,
+                albumId: track.album.id,
+                albumName: track.album.name,
+                albumImageUrl: track.album.images[0].url
+            })),
+            createdAt: new Date()
+        };
+        // Insert the playlist document into the database
+        await db.collection('playlists').insertOne(playlistDocument);
+        console.log('Playlist submitted successfully');
+    } catch (err) {
+        console.error('Error submitting playlist:', err);
     }
 }
 

@@ -109,13 +109,14 @@ html(lang="en")
               p#current-artist-name 
                 a(href=`https://open.spotify.com/artist/${recentTrack.artistId}` target='_blank') #{recentTrack.artistName}
             if recentTrack.trackName
-              h5#current-track-name #{recentTrack.trackName}
+              h5#current-track-name
+                a(href=`https://open.spotify.com/track/${recentTrack.trackId}` target='_blank') #{recentTrack.trackName}
             if recentTrack.albumName
               p#current-album-name #{recentTrack.albumName}
           input.playhead-slider#playhead(type="range" value="0" min="0" max="100")
     ul.nav.nav-tabs(role='tablist')
       li.nav-item
-        a.nav-link(href='#history', data-bs-toggle='tab', role='tab', aria-controls='history', aria-selected='false') History
+        a.nav-link.active(href='#history', data-bs-toggle='tab', role='tab', aria-controls='history', aria-selected='true') History
       li.nav-item
         a.nav-link(href='#queue', data-bs-toggle='tab', role='tab', aria-controls='queue', aria-selected='false') Queue
       // tab for searching
@@ -123,10 +124,12 @@ html(lang="en")
         a.nav-link(href='#search', data-bs-toggle='tab', role='tab', aria-controls='search', aria-selected='false') Search
       // nav-item for playlist tab for taking a playlist link and the server will proccess it and return the tracks
       li.nav-item
-        a.nav-link.active(href='#playlist', data-bs-toggle='tab', role='tab', aria-controls='playlist', aria-selected='true') Playlist
+        a.nav-link(href='#playlist', data-bs-toggle='tab', role='tab', aria-controls='playlist', aria-selected='false') Playlist
+      li.nav-item
+        a.nav-link(href='#playlists', data-bs-toggle='tab', role='tab', aria-controls='playlists', aria-selected='false') Uploaded
 
     .tab-content
-      #history.tab-pane.fade(role='tabpanel', aria-labelledby='history-tab')
+      #history.tab-pane.fade.show.active(role='tabpanel', aria-labelledby='history-tab')
         h1.text-spotify.mb-3
         .table-responsive
           table#historyTableBody.table.table-dark.table-hover.align-middle
@@ -188,11 +191,22 @@ html(lang="en")
                 th Action
             tbody#searchResultsTable
               // Search results will be appended here
-      #playlist.tab-pane.fade.show.active(role='tabpanel', aria-labelledby='playlist-tab')
-        h1.text-spotify.mb-3 Playlist
+              
+      #playlist.tab-pane.fade(role='tabpanel', aria-labelledby='playlist-tab')
+        h1.text-spotify.mb-3 Upload A Playlist 
         .input-group.mb-3
-          input.form-control(type='text', id='playlistInput', placeholder='Enter playlist URL', aria-label='Enter playlist ID')
+          input.form-control.mb-2(type='text', id='playlistInput', placeholder='Enter playlist URL', aria-label='Playlist URL')
           button.btn.btn-success(type='button', id='playlistButton') Upload Playlist
+        .additional-inputs.d-none
+          input.form-control.mb-2(type='text', id='userNameInput', placeholder='Enter your name', aria-label='User Name')
+          input.form-control.mb-2(type='text', id='playlistNameInput', placeholder='Enter playlist name', aria-label='Playlist Name')
+          div.d-flex.align-items-center
+            button.btn.btn-primary.mr-2(type='button', id='submitPlaylistButton', disabled) Submit Playlist
+            button.btn.btn-secondary(type='button', id='resetPlaylistForm') Reset
+        .playlist-info.mb-3.d-none
+          p#totalCount Total Songs: 0
+          p#explicitCount.text-danger Total Explicit Songs: 0
+          p#nonExplicitCount.text-success Songs to be added: 0
         .table-responsive
           table.table.table-dark.table-hover
             thead
@@ -203,6 +217,10 @@ html(lang="en")
                 th Content warning
             tbody#playlistResultsTable
               // Search results will be appended here
+      #playlists.tab-pane.fade(role='tabpanel', aria-labelledby='playlists-tab')
+        h1.text-spotify.mb-3 Playlists
+              // Content for playlists will be appended here
+
               script.
                 $(document).ready(function() {
                   var ws;
@@ -262,8 +280,10 @@ html(lang="en")
                           updateQueueTable(data.queueItems);
                           break;
                         case 'playlist-data':
-                          console.log('Received playlist items:', data.playlistItems);
                           displayPlaylistTracks(data.playlistItems);
+                          break;
+                        case 'playlist-data':
+                          displayPlaylists(data.playlists);
                           break;
                         default:
                           console.log('Unknown message type:', data.type);
@@ -278,8 +298,8 @@ html(lang="en")
                     var albumNameElement = $('#current-album-name');
                     var artistImageElement = $('#artist-image-element-id');
                     var playheadElement = $('#playhead');
-                    if (artistNameElement.length) artistNameElement.text(track.artistName);
-                    if (trackNameElement.length) trackNameElement.text(track.trackName);
+                    if (artistNameElement.length) artistNameElement.html(`<a href="https://open.spotify.com/artist/${track.artistId}" target="_blank">${track.artistName}</a>`);
+                    if (trackNameElement.length) trackNameElement.html(`<a href="https://open.spotify.com/track/${track.trackId}" target="_blank">${track.trackName}</a>`);
                     if (albumNameElement.length) albumNameElement.text(track.albumName);
                     if (artistImageElement.length) artistImageElement.attr('src', track.artistImageUrl);
                     if (playheadElement.length) playheadElement.val(0);
@@ -294,6 +314,7 @@ html(lang="en")
                                         </td>
                                       </tr>`;
                     $('#historyTableBody').prepend(newRowHtml);
+                  console.log('track', track);
                   }
 
                   function updatePlayhead(progress_ms, trackDuration) {
@@ -385,53 +406,134 @@ html(lang="en")
                       }
                     }
                   });
+                  
 
-                  // Playlist
+
+                  $('#resetPlaylistForm').on('click', function() {
+                      $('#playlistInput').closest('.input-group').removeClass('d-none');
+                      $('.additional-inputs').addClass('d-none');
+                      $('.playlist-info').addClass('d-none');
+                      $('#playlistInput').val('');
+                      $('#userNameInput').val('');
+                      $('#playlistNameInput').val('');
+                      $('#playlistResultsTable').empty();
+                      $('#totalCount').text('Total Songs: 0');
+                      $('#explicitCount').text('Total Explicit Songs: 0');
+                      $('#nonExplicitCount').text('Songs to be added: 0');
+                      $('#submitPlaylistButton').prop('disabled', true);
+                  });
+
                   function displayPlaylistTracks(playlistItems) {
                     var playlistTableBody = $('#playlistResultsTable');
                     playlistTableBody.empty();
-                    console.log('Playlist items:', playlistItems);
+
+                    var totalCount = 0;
+                    var explicitCount = 0;
+                    var nonExplicitCount = 0;
+                    var nonExplicitTracks = [];
+
                     if (Array.isArray(playlistItems)) {
-                        playlistItems.forEach(function(trackItem) {
-                            var track = trackItem.track;
+                      totalCount = playlistItems.length;
+
+                      playlistItems.forEach(function(trackItem) {
+                        var track = trackItem.track;
+                        if (!track.explicit) {
                             var rowHtml = `<tr>
-                                            <td>
-                                              <div>
-                                                <img src="${track.album.images[2].url}" alt="${track.artists[0].name}" style="height: 50px;">
-                                                <br>
-                                                <span>${track.name}</span>
-                                              </div>
-                                            </td>
-                                            <td>${track.artists[0].name}</td>
+                                            <td>${track.name}</td>
+                                            <td>${track.artists.map(artist => artist.name).join(", ")}</td>
                                             <td>${formatTrackDuration(track.duration_ms)}</td>
-                                            <td>
-                                              ${track.explicit ? '<i class="fas fa-exclamation-triangle"></i>' : ''}
-                                            </td>
+                                            <td>${track.explicit ? '<span class="text-danger">Explicit</span>' : '<span class="text-success">Clean</span>'}</td>
                                           </tr>`;
                             playlistTableBody.append(rowHtml);
-                        });
-                    } else {
-                        console.error('Playlist data is not an array', playlistItems);
+                            nonExplicitCount++;
+                            nonExplicitTracks.push(track);
+                        } else {
+                            explicitCount++;
+                        }
+                    });
+                    
+                    $('#totalCount').text(`Total Songs: ${totalCount}`);
+                    $('#explicitCount').text(`Total Explicit Songs: ${explicitCount}`);
+                    $('#nonExplicitCount').text(`Songs to be added: ${nonExplicitCount}`);
+                    if (nonExplicitCount > 0) {
+                        $('#submitPlaylistButton').prop('disabled', false);
                     }
+                  } else {
+                      console.error('Playlist data is not an array', playlistItems);
                   }
 
+                  function submitPlaylist() {
+                    var userName = $('#userNameInput').val().trim();
+                    var playlistName = $('#playlistNameInput').val().trim();
+
+
+                    if (userName.length > 0 && playlistName.length > 0) {
+                        ws.send(JSON.stringify({
+                            action: 'submit-playlist',
+                            user: userName,
+                            playlistName: playlistName,
+                            tracks: nonExplicitTracks
+                        }));
+                    } else {
+                        alert('Please enter both user name and playlist name.');
+                    }
+                  }
+                  // Playlist event listeners
+                  $('#submitPlaylistButton').off('click').on('click', submitPlaylist);
+
+                  $('#userNameInput, #playlistNameInput').off('keypress').on('keypress', function(event) {
+                        if (event.which === 13) {
+                            submitPlaylist();
+                        }
+                    });
+                  };
+
                   $('#playlistButton').on('click', function() {
-                    var playlistId = $('#playlistInput').val().trim();
-                      if (playlistId.length > 0) {
-                        ws.send(JSON.stringify({ action: 'get-playlist', playlistId: playlistId }));
-                        $(this).val('');
-                      }
-                  });
-                  
-                  $('#playlistInput').on('keypress', function(event) {
-                    if (event.which === 13) {
-                      var playlistId = $(this).val().trim();
-                      if (playlistId.length > 0) {
-                        ws.send(JSON.stringify({ action: 'get-playlist', playlistId: playlistId }));
-                        $(this).val('');
-                      }
+                    var playlistUrl = $('#playlistInput').val().trim();
+                    if (playlistUrl.length > 0) {
+                      ws.send(JSON.stringify({ action: 'get-playlist', playlistId: playlistUrl }));
+                      // Hide URL input and show username and playlist name
+                      $('#playlistInput').closest('.input-group').addClass('d-none');
+                      $('.additional-inputs').removeClass('d-none');
+                      $('.playlist-info').removeClass('d-none');
                     }
                   });
+
+                  $('#playlistInput').on('keypress', function(event) {
+                      if (event.which === 13) { 
+                          var playlistUrl = $('#playlistInput').val().trim();
+                          if (playlistUrl.length > 0) {
+                              ws.send(JSON.stringify({ action: 'get-playlist', playlistId: playlistUrl }));
+                              $('#playlistInput').closest('.input-group').addClass('d-none');
+                              $('.additional-inputs').removeClass('d-none');
+                              $('.playlist-info').removeClass('d-none');
+                          }
+                      }
+                  });
+                  // uploaded tab
+                  $('a[href="#playlists"]').on('click', function() {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                      ws.send(JSON.stringify({ action: 'get-playlists' }));
+                    }
+                  });
+
+
+
+                  function displayPlaylists(playlists) {
+                    var playlistsTableBody = $('#playlistsTableBody');
+                    playlistsTableBody.empty();
+                    playlists.forEach(function(playlist) {
+                      var rowHtml = `<tr>
+                                      <td>${playlist.playlistName}</td>
+                                      <td>${playlist.userName}</td>
+                                      <td>${playlist.tracks.length}</td>
+                                      // Add more data as needed
+                                    </tr>`;
+                      playlistsTableBody.append(rowHtml);
+                    });
+                  }
+
+
 
                   startWebSocket();
                 });
