@@ -178,10 +178,17 @@ html(lang="en")
                 th Artist Image
             tbody#queueTableBody
       #search.tab-pane.fade(role='tabpanel', aria-labelledby='search-tab')
-        h1.text-spotify.mb-3 Search
-        .input-group.mb-3
-          input.form-control(type='text', id='searchInput', placeholder='Search for a song', aria-label='Search for a song')
-          button.btn.btn-success(type='button', id='searchButton') Search
+        #displayUsername(style='display: none;')
+        #usernameInputSection
+          h1.text-spotify.mb-3 Enter Your Name
+          .input-group.mb-3
+            input.form-control(type='text', id='usernameInput', placeholder='Enter your username', aria-label='Username')
+            button.btn.btn-success(type='button', id='saveUsernameButton') Enter Name
+        #searchInputSection(style='display: none;')
+          h1.text-spotify.mb-3 Search
+          .input-group.mb-3
+            input.form-control(type='text', id='searchInput', placeholder='Search for a song', aria-label='Search for a song')
+            button.btn.btn-success(type='button', id='searchButton') Search
         .table-responsive
           table.table.table-dark.table-hover
             thead
@@ -191,6 +198,7 @@ html(lang="en")
                 th Action
             tbody#searchResultsTable
               // Search results will be appended here
+
               
       #playlist.tab-pane.fade(role='tabpanel', aria-labelledby='playlist-tab')
         h1.text-spotify.mb-3 Upload A Playlist 
@@ -279,6 +287,16 @@ html(lang="en")
                         case 'queue-data':
                           updateQueueTable(data.queueItems);
                           break;
+                        case 'queue-update':
+                          if (data.status === 'error' && data.message === 'This song has been played in the last 12 hours.') {
+                              alert(`This song has been played recently and will be available again at ${data.availableAt}`);
+                          } else {
+                              // Handle other queue-update messages
+                          }
+                          break;
+                        case 'queue-error':
+                          alert(data.message);  // or use a more sophisticated method to display the error
+                          break;
                         case 'playlist-data':
                           displayPlaylistTracks(data.playlistItems);
                           break;
@@ -365,29 +383,32 @@ html(lang="en")
                     resultsTable.empty();
 
                     results.forEach(function(item) {
-                      var songLink = $('<a>').attr('href', item.external_urls.spotify).text(item.name);
-                      var songName = $('<td>').append(songLink);
-                      var artistName = $('<td>').text(item.artists[0].name);
+                        var songLink = $('<a>').attr('href', item.external_urls.spotify).text(item.name);
+                        var songName = $('<td>').append(songLink);
+                        var artistName = $('<td>').text(item.artists[0].name);
 
-                      var actionTd = $('<td>');
-                      if (item.explicit) {
-                        var explicitLabel = $('<span>').addClass('badge bg-danger').text('Explicit');
-                        actionTd.append(explicitLabel);
-                      } else {
-                        var addToQueueButton = $('<button>').addClass('btn btn-sm btn-success').text('Add to Queue');
-                        addToQueueButton.on('click', function() {
-                          var confirmQueue = confirm('Are you sure you want to add this song to the queue?');
-                          if (confirmQueue) {
-                            ws.send(JSON.stringify({ action: 'add-to-queue', trackUri: item.uri }));
-                          }
-                        });
-                        actionTd.append(addToQueueButton);
-                      }
+                        var actionTd = $('<td>');
+                        var isNickelback = item.artists.some(artist => artist.name.toLowerCase() === 'nickelback');
 
-                      var tr = $('<tr>').append(songName, artistName, actionTd);
-                      resultsTable.append(tr);
+                        if (isNickelback || item.explicit) {
+                            var explicitLabel = $('<span>').addClass('badge bg-danger').text('Explicit');
+                            actionTd.append(explicitLabel);
+                        } else {
+                            var addToQueueButton = $('<button>').addClass('btn btn-sm btn-success').text('Add to Queue');
+                            addToQueueButton.on('click', function() {
+                                var confirmQueue = confirm('Are you sure you want to add this song to the queue?');
+                                if (confirmQueue) {
+                                    ws.send(JSON.stringify({ action: 'add-to-queue', trackUri: item.uri }));
+                                }
+                            });
+                            actionTd.append(addToQueueButton);
+                        }
+
+                        var tr = $('<tr>').append(songName, artistName, actionTd);
+                        resultsTable.append(tr);
                     });
                   }
+
 
                   $('#searchButton').on('click', function() {
                     var searchQuery = $('#searchInput').val().trim();
@@ -407,6 +428,24 @@ html(lang="en")
                     }
                   });
                   
+                  $('#saveUsernameButton').on('click', function() {
+                    const username = $('#usernameInput').val().trim();
+                    if (username) {
+                      document.cookie = `username=${username};path=/;max-age=86400`; // Expires in 1 day
+                      $('#usernameInput').closest('.input-group').hide();
+                    }
+                  });
+                  
+                  $('#usernameInput').on('keypress', function(event) {
+                    if (event.which === 13) {
+                      const username = $(this).val().trim();
+                      if (username) {
+                        document.cookie = `username=${username};path=/;max-age=86400`; // Expires in 1 day
+                        $(this).closest('.input-group').hide(); 
+                      }
+                    }
+                  });
+
 
 
                   $('#resetPlaylistForm').on('click', function() {
@@ -492,7 +531,6 @@ html(lang="en")
                     var playlistUrl = $('#playlistInput').val().trim();
                     if (playlistUrl.length > 0) {
                       ws.send(JSON.stringify({ action: 'get-playlist', playlistId: playlistUrl }));
-                      // Hide URL input and show username and playlist name
                       $('#playlistInput').closest('.input-group').addClass('d-none');
                       $('.additional-inputs').removeClass('d-none');
                       $('.playlist-info').removeClass('d-none');
@@ -532,9 +570,51 @@ html(lang="en")
                       playlistsTableBody.append(rowHtml);
                     });
                   }
+                  function queueSong(songUri) {
+                      const username = getCookie('username');
+                      if (ws && ws.readyState === WebSocket.OPEN) {
+                          ws.send(JSON.stringify({ action: 'add-to-queue', trackUri: songUri, username: username }));
+                      }
+                  }
+
+                  // Helper function to get cookie value
+                  function getCookie(name) {
+                      const value = `; ${document.cookie}`;
+                      const parts = value.split(`; ${name}=`);
+                      if (parts.length === 2) return parts.pop().split(';').shift();
+                  }
+
+                  function checkUsernameAndToggleUI() {
+                      var username = getCookie('username');
+                      if (username) {
+                        $('#usernameInputSection').hide();
+                        $('#searchInputSection').show();
+                        $('#displayUsername').text(`Username: ${username}`).show();
+                      } else {
+                        $('#usernameInputSection').show();
+                        $('#searchInputSection').hide();
+                        $('#displayUsername').hide();
+                      }
+                    }
+
+                    $('#saveUsernameButton').on('click', function() {
+                      const username = $('#usernameInput').val().trim();
+                      if (username) {
+                        document.cookie = `username=${username};path=/;max-age=86400`; // Expires in 1 day
+                        checkUsernameAndToggleUI();
+                      }
+                    });
+
+                    $('#usernameInput').on('keypress', function(event) {
+                      if (event.which === 13) {
+                        $('#saveUsernameButton').click();
+                      }
+                    });
 
 
 
+
+                  checkUsernameAndToggleUI();
                   startWebSocket();
                 });
 

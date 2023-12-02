@@ -27,6 +27,23 @@ let globalRefreshToken;
 let refreshIntervalId;
 
 console.log('Starting Spotify app');
+
+async function loadAccessToken() {
+    try {
+        const tokenInfo = await client.db('LFDEV').collection('spotify_info').findOne({}, { sort: { _timestamp: -1 } });
+        if (tokenInfo) {
+            globalAccessToken = tokenInfo.access_token;
+            globalRefreshToken = tokenInfo.refresh_token;
+            console.log('Loaded tokens from DB. Access token:', globalAccessToken, 'Refresh token:', globalRefreshToken);
+        } else {
+            console.log('No token info found in DB');
+        }
+    } catch (err) {
+        console.error('Error loading access token from DB:', err);
+    }
+}
+loadAccessToken();
+
 wss.on('connection', (ws) => {
     console.log('A user connected');
     ws.isAlive = true;
@@ -34,7 +51,7 @@ wss.on('connection', (ws) => {
         ws.isAlive = true;
     });
     ws.on('message', async (message) => {
-        console.log('Received message:', message);
+        // console.log('Received message:', message);
         const data = JSON.parse(message);
 
         switch (data.action) {
@@ -42,10 +59,9 @@ wss.on('connection', (ws) => {
                 const searchResults = await searchSpotify(data.query);
                 ws.send(JSON.stringify({ type: 'search-results', results: searchResults }));
                 break;
-            case 'add-to-queue':
-                await addToQueue(data.trackUri);
-                ws.send(JSON.stringify({ type: 'queue-update', status: 'added' }));
-                break;
+                case 'add-to-queue':
+                    await addToQueue(data.trackUri, ws); // Pass the ws object here
+                    break;
             case 'get-queue':
                 const queueData = await getQueueData();
                 ws.send(JSON.stringify({ type: 'queue-data', queueItems: queueData }));
@@ -125,21 +141,6 @@ async function getQueueData() {
     }
 }
 
-async function loadAccessToken() {
-    try {
-        const tokenInfo = await client.db('LFDEV').collection('spotify_info').findOne({}, { sort: { _timestamp: -1 } });
-        if (tokenInfo) {
-            globalAccessToken = tokenInfo.access_token;
-            globalRefreshToken = tokenInfo.refresh_token;
-            console.log('Loaded tokens from DB. Access token:', globalAccessToken, 'Refresh token:', globalRefreshToken);
-        } else {
-            console.log('No token info found in DB');
-        }
-    } catch (err) {
-        console.error('Error loading access token from DB:', err);
-    }
-}
-loadAccessToken();
 
 async function searchSpotify(query) {
     const spotifyApiUrl = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track`;
@@ -156,19 +157,92 @@ async function searchSpotify(query) {
     return data.tracks.items;
 }
 
-async function addToQueue(trackUri) {
-    const spotifyApiUrl = `https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(trackUri)}`;
-    const response = await fetch(spotifyApiUrl, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${globalAccessToken}` }
-    });
+let myQueue = []; // This will store your custom queue
 
-    if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Error adding track to queue:', errorData);
-        throw new Error('Error adding track to queue');
+async function addToQueue(trackUri, ws) {
+    try {
+        const trackId = trackUri.split(':').pop();
+
+        // Fetch song details to check its length
+        const songDetails = await fetchSongDetails(trackId); // Implement this function to fetch song details from Spotify
+        if (songDetails.duration_ms > 480000) { // 8 minutes in milliseconds
+            ws.send(JSON.stringify({ type: 'queue-error', message: 'Song is longer than 8 minutes' }));
+            return;
+        }
+
+        // Check if song is already in your custom queue
+        if (isSongInMyQueue(trackId)) {
+            ws.send(JSON.stringify({ type: 'queue-error', message: 'Song is already in the queue' }));
+            return;
+        }
+
+        // Check if song was played in the last 12 hours
+        const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000).getTime();
+        const recentPlay = await db.collection('spotify').findOne({
+            trackId: trackId,
+            _timestamp: { $gte: twelveHoursAgo }
+        });
+
+        if (recentPlay) {
+            const availableAt = new Date(recentPlay._timestamp + 12 * 60 * 60 * 1000);
+            const availableAtString = availableAt.toLocaleString('en-US', { timeZone: 'CST6CDT' });
+            ws.send(JSON.stringify({
+                type: 'queue-update',
+                status: 'error',
+                message: 'This song has been played in the last 12 hours.',
+                availableAt: availableAtString
+            }));
+            return;
+        }
+
+        // Add song to Spotify's queue
+        const spotifyApiUrl = `https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(trackUri)}`;
+        const response = await fetch(spotifyApiUrl, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${globalAccessToken}` }
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            console.error('Error adding track to queue:', errorData);
+            ws.send(JSON.stringify({ type: 'queue-update', status: 'error', message: 'Error adding track to queue' }));
+        } else {
+            // Add to custom queue
+            addToMyQueue({ trackId: trackId, trackUri: trackUri });
+            ws.send(JSON.stringify({ type: 'queue-update', status: 'added' }));
+        }
+    } catch (error) {
+        console.error('Error in addToQueue:', error);
+        ws.send(JSON.stringify({ type: 'queue-update', status: 'error', message: 'An error occurred while adding the track to the queue.' }));
     }
 }
+
+function addToMyQueue(songDetails) {
+    myQueue.push(songDetails);
+}
+
+function removeFromMyQueue(trackId) {
+    myQueue = myQueue.filter(song => song.trackId !== trackId);
+}
+
+function isSongInMyQueue(trackId) {
+    return myQueue.some(song => song.trackId === trackId);
+}
+
+// Implement this function to fetch song details from Spotify
+async function fetchSongDetails(trackId) {
+    const url = `https://api.spotify.com/v1/tracks/${trackId}`;
+    const response = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${globalAccessToken}` }
+    });
+    if (!response.ok) {
+        throw new Error('Failed to fetch song details');
+    }
+    return await response.json();
+}
+
+
+
 
 async function getCurrentPlayingTrack(access_token) {
     const url = 'https://api.spotify.com/v1/me/player/currently-playing';
@@ -246,7 +320,6 @@ async function getPlaylistData(playlistUrl) {
 async function handlePlaylistSubmission(data) {
     try {
         const { user, playlistName, tracks } = data;
-        // Create a playlist document
         const playlistDocument = {
             userName: user,
             playlistName: playlistName,
@@ -262,7 +335,6 @@ async function handlePlaylistSubmission(data) {
             })),
             createdAt: new Date()
         };
-        // Insert the playlist document into the database
         await db.collection('playlists').insertOne(playlistDocument);
         console.log('Playlist submitted successfully');
     } catch (err) {
@@ -286,6 +358,7 @@ app.get('/tracks', async (req, res) => {
     }
 });
 
+// authintication stuff
 app.get('/login', (req, res) => {
     const scope = 'user-read-currently-playing user-read-recently-played user-modify-playback-state user-read-playback-state';
     res.redirect('https://accounts.spotify.com/authorize?' +
