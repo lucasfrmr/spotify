@@ -59,9 +59,9 @@ wss.on('connection', (ws) => {
                 const searchResults = await searchSpotify(data.query);
                 ws.send(JSON.stringify({ type: 'search-results', results: searchResults }));
                 break;
-                case 'add-to-queue':
-                    await addToQueue(data.trackUri, ws); // Pass the ws object here
-                    break;
+            case 'add-to-queue':
+                await addToQueue(data.trackUri, ws);
+                break;
             case 'get-queue':
                 const queueData = await getQueueData();
                 ws.send(JSON.stringify({ type: 'queue-data', queueItems: queueData }));
@@ -79,7 +79,6 @@ wss.on('connection', (ws) => {
                     ws.send(JSON.stringify({ type: 'playlist-data', playlists }));
                 } catch (err) {
                     console.error('Error fetching playlists:', err);
-                    // Optionally, send an error message back to the client
                     ws.send(JSON.stringify({ type: 'error', message: 'Failed to fetch playlists' }));
                 }
                 break;
@@ -165,18 +164,20 @@ async function addToQueue(trackUri, ws) {
 
         // Fetch song details to check its length
         const songDetails = await fetchSongDetails(trackId); // Implement this function to fetch song details from Spotify
-        if (songDetails.duration_ms > 480000) { // 8 minutes in milliseconds
+        if (songDetails.duration_ms > 480000) {
             ws.send(JSON.stringify({ type: 'queue-error', message: 'Song is longer than 8 minutes' }));
             return;
         }
 
-        // Check if song is already in your custom queue
-        if (isSongInMyQueue(trackId)) {
-            ws.send(JSON.stringify({ type: 'queue-error', message: 'Song is already in the queue' }));
+        // Check if song is already in the current Spotify queue
+        const currentQueue = await getQueueData();
+        if (currentQueue.queue && currentQueue.queue.some(queue => queue.id === trackId)) {
+
+            ws.send(JSON.stringify({ type: 'queue-error', status: 'error', message: 'Song is already in the queue' }));
             return;
         }
 
-        // Check if song was played in the last 12 hours
+        // Check if song has been played in the last 12 hours
         const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000).getTime();
         const recentPlay = await db.collection('spotify').findOne({
             trackId: trackId,
@@ -229,7 +230,6 @@ function isSongInMyQueue(trackId) {
     return myQueue.some(song => song.trackId === trackId);
 }
 
-// Implement this function to fetch song details from Spotify
 async function fetchSongDetails(trackId) {
     const url = `https://api.spotify.com/v1/tracks/${trackId}`;
     const response = await fetch(url, {
@@ -241,12 +241,10 @@ async function fetchSongDetails(trackId) {
     return await response.json();
 }
 
-
-
-
 async function getCurrentPlayingTrack(access_token) {
     const url = 'https://api.spotify.com/v1/me/player/currently-playing';
     const headers = { 'Authorization': `Bearer ${access_token}` };
+    
 
     try {
         const response = await fetch(url, { headers });
@@ -282,7 +280,7 @@ async function getCurrentPlayingTrack(access_token) {
             console.log('trackDuration: ', newTrackEntry.trackDuration);
             await collection.insertOne(newTrackEntry);
             updateSong(newTrackEntry, body.progress_ms);
-            console.log(`Track (${track.id}) has been logged`);
+            // console.log(`Track (${track.id}) has been logged`);
         } else {
             // updateSong(recentTrack, body.progress_ms);
             // console.log('Track is already in the database');
@@ -343,7 +341,7 @@ async function handlePlaylistSubmission(data) {
 }
 
 
-app.get('/tracks', async (req, res) => {
+app.get(['/', '/tracks'], async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const pageSize = parseInt(req.query.pageSize) || 20;
@@ -367,7 +365,6 @@ app.get('/login', (req, res) => {
     (scope ? '&scope=' + encodeURIComponent(scope) : '') +
     '&redirect_uri=' + encodeURIComponent(redirect_uri));
 });
-
 
 app.get('/callback', async (req, res) => {
     console.log('/callback');
@@ -398,7 +395,6 @@ app.get('/callback', async (req, res) => {
         const refresh_token = body.refresh_token;
 
         client.db('LFDEV').collection('spotify_info').updateOne({}, { $set: { timestamp: Date.now(), access_token, refresh_token } }, { upsert: true });
-        getCurrentPlayingTrack(access_token);
         globalAccessToken = access_token;
         
         res.send('Success! You can now close the window.');
@@ -438,23 +434,22 @@ async function refreshAccessToken() {
         const body = await response.json();
         globalAccessToken = body.access_token;
         globalRefreshToken = body.refresh_token || globalRefreshToken;
-
-        // Update the database with the new tokens
-        await client.db('LFDEV').collection('spotify_info').updateOne({}, { $set: { access_token: globalAccessToken, refresh_token: globalRefreshToken } }, { upsert: true });
-
+        await client.db('LFDEV').collection('spotify_info').updateOne({}, { $set: { timestamp: Date.now(), access_token: globalAccessToken, refresh_token: globalRefreshToken } }, { upsert: true });
         console.log('Access token refreshed and updated in the database.');
     } catch (err) {
         console.error('Error during token refresh:', err);
     }
 }
 
-const refreshInterval = 55 * 60 * 1000;  // 55 minutes in milliseconds
-setInterval(() => {
-    console.log('Running refresh interval');
-    refreshAccessToken(globalRefreshToken); // Ensure globalRefreshToken is correctly initialized and updated
+const refreshInterval = 1 * 60 * 1000;  // 55 minutes in milliseconds
+setInterval(async () => {
+    const tokenInfo = await client.db('LFDEV').collection('spotify_info').findOne({}, { sort: { _timestamp: -1 } });
+    console.log((Date.now() - tokenInfo.timestamp), refreshInterval)
+    if ((Date.now() - tokenInfo.timestamp) > refreshInterval) {
+        refreshAccessToken(globalRefreshToken); // Ensure globalRefreshToken is correctly initialized and updated
+    };
 }, refreshInterval);
 
 setInterval(async () => {
-    const stored_token = await client.db('LFDEV').collection('spotify_info').find({ "globalAccessToken": { "$exists": true } }).toArray();
-    await getCurrentPlayingTrack(stored_token[0].access_token);
+    await getCurrentPlayingTrack(globalAccessToken);
 }, interval);

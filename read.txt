@@ -8,3 +8,4 @@
 -suggested playlists
 -unify search history, queue, and playlist
 -30 second preview of song on search and history
+-make song and playlist ids searchable

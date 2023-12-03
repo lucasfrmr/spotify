@@ -116,12 +116,12 @@ html(lang="en")
           input.playhead-slider#playhead(type="range" value="0" min="0" max="100")
     ul.nav.nav-tabs(role='tablist')
       li.nav-item
-        a.nav-link.active(href='#history', data-bs-toggle='tab', role='tab', aria-controls='history', aria-selected='true') History
+        a.nav-link(href='#history', data-bs-toggle='tab', role='tab', aria-controls='history', aria-selected='false') History
       li.nav-item
         a.nav-link(href='#queue', data-bs-toggle='tab', role='tab', aria-controls='queue', aria-selected='false') Queue
       // tab for searching
       li.nav-item
-        a.nav-link(href='#search', data-bs-toggle='tab', role='tab', aria-controls='search', aria-selected='false') Search
+        a.nav-link.active(href='#search', data-bs-toggle='tab', role='tab', aria-controls='search', aria-selected='ttrue') Search
       // nav-item for playlist tab for taking a playlist link and the server will proccess it and return the tracks
       li.nav-item
         a.nav-link(href='#playlist', data-bs-toggle='tab', role='tab', aria-controls='playlist', aria-selected='false') Playlist
@@ -129,7 +129,7 @@ html(lang="en")
         a.nav-link(href='#playlists', data-bs-toggle='tab', role='tab', aria-controls='playlists', aria-selected='false') Uploaded
 
     .tab-content
-      #history.tab-pane.fade.show.active(role='tabpanel', aria-labelledby='history-tab')
+      #history.tab-pane.fade(role='tabpanel', aria-labelledby='history-tab')
         h1.text-spotify.mb-3
         .table-responsive
           table#historyTableBody.table.table-dark.table-hover.align-middle
@@ -177,7 +177,7 @@ html(lang="en")
                 th Track Length
                 th Artist Image
             tbody#queueTableBody
-      #search.tab-pane.fade(role='tabpanel', aria-labelledby='search-tab')
+      #search.tab-pane.fade.show.active(role='tabpanel', aria-labelledby='search-tab')
         #displayUsername(style='display: none;')
         #usernameInputSection
           h1.text-spotify.mb-3 Enter Your Name
@@ -191,7 +191,7 @@ html(lang="en")
             button.btn.btn-success(type='button', id='searchButton') Search
         .table-responsive
           table.table.table-dark.table-hover
-            thead
+            thead#searchResultsTable
               tr
                 th Song
                 th Artist
@@ -283,6 +283,7 @@ html(lang="en")
                           updateCurrentTrack(data.track);
                           updateTrackTable(data.track);
                           updatePlayhead(data.progress_ms, data.track.trackDuration);
+                          ws.send(JSON.stringify({ action: 'get-queue' }));
                           break;
                         case 'queue-data':
                           updateQueueTable(data.queueItems);
@@ -377,7 +378,7 @@ html(lang="en")
                     }
                   }
 
-                  // Search
+                  // Search and addToQueue
                   function displaySearchResults(results) {
                     var resultsTable = $('#searchResultsTable');
                     resultsTable.empty();
@@ -398,7 +399,8 @@ html(lang="en")
                             addToQueueButton.on('click', function() {
                                 var confirmQueue = confirm('Are you sure you want to add this song to the queue?');
                                 if (confirmQueue) {
-                                    ws.send(JSON.stringify({ action: 'add-to-queue', trackUri: item.uri }));
+                                    ws.send(JSON.stringify({ action: 'add-to-queue', trackUri: item.uri, userName: document.cookie }));
+                                    
                                 }
                             });
                             actionTd.append(addToQueueButton);
@@ -408,7 +410,6 @@ html(lang="en")
                         resultsTable.append(tr);
                     });
                   }
-
 
                   $('#searchButton').on('click', function() {
                     var searchQuery = $('#searchInput').val().trim();
@@ -555,8 +556,6 @@ html(lang="en")
                     }
                   });
 
-
-
                   function displayPlaylists(playlists) {
                     var playlistsTableBody = $('#playlistsTableBody');
                     playlistsTableBody.empty();
@@ -590,10 +589,13 @@ html(lang="en")
                         $('#usernameInputSection').hide();
                         $('#searchInputSection').show();
                         $('#displayUsername').text(`Username: ${username}`).show();
+                        $('#searchResultsTable').show();
                       } else {
                         $('#usernameInputSection').show();
                         $('#searchInputSection').hide();
                         $('#displayUsername').hide();
+                        //#searchResultsTable
+                        $('#searchResultsTable').hide();
                       }
                     }
 
