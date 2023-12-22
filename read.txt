@@ -12,3 +12,163 @@
 - everything should be consistent and have artist song and album
 - clear playlist tab on input
 -
+
+
+
+
+server completed
+    -lost functions
+
+// async function roundRobinQueueSongs(ws) {
+//     console.log('Running roundRobinQueueSongs()');
+
+//     let users = await db.collection('users').find().toArray();
+//     for (const user of users) {
+//         console.log(`User: ${user.username}, Track Status Before:`, user.queuedSongs.map(song => ({ trackName: song.trackName, played: song.played })));
+
+//         const unplayedSongs = user.queuedSongs.filter(song => !song.played);
+//         if (unplayedSongs.length > 0) {
+//             const nextSong = unplayedSongs[0]; // Get the first unplayed song
+//             console.log('User:', user.username, 'Next song to be queued:', nextSong.trackName);
+
+//             // Add the song to Spotify's queue and mark it as played
+//             await addSongToSpotifyQueue(nextSong, user, ws);
+//             await markSongAsPlayed(user.username, nextSong.trackUri);
+
+//             // Log the updated played status
+//             const updatedUser = await db.collection('users').findOne({ _id: user._id });
+//             console.log(`User: ${user.username}, Track Status After:`, updatedUser.queuedSongs.map(song => ({ trackName: song.trackName, played: song.played })));
+
+//             break; // Break after processing the first unplayed song
+//         }
+//     }
+// }
+
+
+// async function roundRobinQueueSongs(ws) {
+//     console.log('Running roundRobinQueueSongs()');
+//     let users = await db.collection('users').find().toArray();
+
+//     // Sort users by the last time they had a song queued to ensure fairness
+//     users.sort((a, b) => (a.lastQueued ?? 0) - (b.lastQueued ?? 0));
+
+
+//     for (const user of users) {
+//         // Refresh user data to get the latest 'played' status of songs
+//         const refreshedUser = await db.collection('users').findOne({ _id: user._id });
+        
+//         const unplayedSongs = refreshedUser.queuedSongs.filter(song => !song.played);
+
+//         if (unplayedSongs.length > 0) {
+//             const nextSong = unplayedSongs[0]; // Get the next unplayed song
+
+//             console.log('User:', user.username, 'Next song:', nextSong.trackName);
+
+//             // Add the song to Spotify's queue and mark it as played
+//             await addSongToSpotifyQueue(nextSong, user, ws);
+//             await markSongAsPlayed(user.username, nextSong.trackUri);
+
+//             // Update lastQueued timestamp
+//             await db.collection('users').updateOne({ _id: user._id }, { $set: { lastQueued: new Date() } });
+
+//             // Queue only one song at a time
+//             break;
+//         }
+//     }
+
+//     console.log('roundRobinQueueSongs completed.');
+// }
+
+
+
+ async function roundRobinQueueSongs(ws) {
+        // Fetch users with roundedRobin set to false
+        console.log('running roundRobinQueueSongs()');
+        let users = await db.collection('users').find({ roundedRobin: false }).toArray();
+    
+        // Reset roundedRobin for all users if none are found
+        if (users.length === 0) {
+            await db.collection('users').updateMany({}, { $set: { roundedRobin: false } });
+            console.log('All users roundedRobin reset to false.');
+            users = await db.collection('users').find({ roundedRobin: false }).toArray();
+        }
+    
+        for (const user of users) {
+            let oldestUnplayedSong = user.queuedSongs.filter(song => !song.played)
+                                                     .sort((a, b) => new Date(a.timestamp.$date) - new Date(b.timestamp.$date))[0];
+    
+            if (!oldestUnplayedSong) {
+                console.log('No unplayed songs for user:', user.username);
+    
+                // Fetch the user's oldest playlist
+                const playlists = await db.collection('playlists').find({ userName: user.username }).sort({ createdAt: 1 }).toArray();
+                const oldestPlaylist = playlists[0];
+    
+                if (oldestPlaylist && oldestPlaylist.tracks) {
+                    // Add tracks from the oldest playlist to the user's queuedSongs
+                    oldestPlaylist.tracks.forEach(track => {
+                        user.queuedSongs.push({
+                            trackUri: track.trackId, // Assuming trackUri is equivalent to trackId
+                            trackName: track.trackName,
+                            artistName: track.artistName,
+                            timestamp: new Date(), // Current timestamp or some other logic
+                            played: false
+                        });
+                    });
+    
+                    // Now find the oldest unplayed song after adding new songs
+                    oldestUnplayedSong = user.queuedSongs.filter(song => !song.played)
+                                                         .sort((a, b) => new Date(a.timestamp.$date) - new Date(b.timestamp.$date))[0];
+                } else {
+                    console.log('No playlists found for user:', user.username);
+                }
+            }
+    
+            if (oldestUnplayedSong) {
+                console.log('Selected User:', user.username);
+                console.log('Oldest Unplayed Song:', oldestUnplayedSong);
+    
+                oldestUnplayedSong.played = true;
+            }
+    
+            // Update the user's roundedRobin property to true
+            user.roundedRobin = true;
+            await db.collection('users').updateOne({ _id: user._id }, { $set: user });
+    
+            if (oldestUnplayedSong) {
+                return { user, song: oldestUnplayedSong };
+            }
+        }
+    
+        console.log('Processed all users. No unplayed songs left.');
+    }
+
+
+
+
+
+
+
+
+
+
+CLIENT CODE 
+    -lost functions
+                     // The sketch
+                  //- new p5((p) => {
+                  //-   p.setup = () => {
+                  //-     let canvas = p.createCanvas($('.current-track').width(), $('.current-track').height());
+                  //-     canvas.parent('p5-sketch-container'); // Parent to the container
+                  //-   };
+
+                  //-   p.draw = () => {
+                  //-       // p5js spinning rectangle
+                  //-       //- p.background(0);
+                  //-       p.translate(p.width / 2, p.height / 2);
+                  //-       p.rotate(p.frameCount / 50);
+                  //-       p.imageMode(p.CENTER);
+                  //-       let offsetY = p.sin(p.frameCount / 100) * 50; // Calculate the vertical offset
+                  //-       let img = p.loadImage('https://spotify.lucasfarmer.com/images/smwyg.png'); // Replace 'path/to/image.jpg' with the actual path to your image
+                  //-       p.image(img, 0, offsetY, 1000, 1000); // Apply the offset to the y-coordinate
+                  //-   };
+                  //- });

@@ -45,7 +45,6 @@ app.get(['/', '/tracks'], async (req, res) => {
         const tracks = await collection.find({}).skip((page - 1) * pageSize).limit(pageSize).sort({_timestamp: -1}).toArray();
         const recentTrack = tracks[0];
 
-
         res.render('tracks', { tracks, recentTrack, page, totalTracks, pageSize });
     } catch (err) {
         console.error(err);
@@ -76,7 +75,9 @@ async function loadAccessToken() {
         if (tokenInfo) {
             globalAccessToken = tokenInfo.access_token;
             globalRefreshToken = tokenInfo.refresh_token;
-            console.log('Loaded tokens from DB. Access token:', globalAccessToken, 'Refresh token:', globalRefreshToken);
+            console.log('Access token loaded from DB');
+            console.log('Access token:  ',globalAccessToken);
+            console.log('Refresh token: ', globalRefreshToken);
         } else {
             console.log('No token info found in DB');
         }
@@ -97,12 +98,21 @@ wss.on('connection', (ws) => {
         const data = JSON.parse(message);
 
         switch (data.action) {
+            // case 'get-user-queue':
+            //     const username = data.username;
+            //     const userQueue = await getUserQueue(username);
+            //     ws.send(JSON.stringify({ type: 'user-queue', queueItems: userQueue }));
+            //     break;
+            // Assuming this is within the WebSocket message handling
             case 'get-user-queue':
-                const username = data.username;
-                const userQueue = await getUserQueue(username);
+                const userQueue = await getUserQueue(data.username);
+                console.log('Sending user queue:', userQueue.length); // Log for debugging
                 ws.send(JSON.stringify({ type: 'user-queue', queueItems: userQueue }));
                 break;
+
             case 'queueOldestUnplayedSong':
+                // getRoundRobinQueue();
+                // queueOldestUnplayedSong();
                 roundRobinQueueSongs();
                 break;
             case 'fetch-song-analysis':
@@ -132,15 +142,17 @@ wss.on('connection', (ws) => {
                 ws.send(JSON.stringify({ type: 'search-results', results: searchResults }));
                 break;
             case 'add-to-queue':
-                await addToQueue(data.trackUri, data.username, ws);
+                console.log('add-to-queue ' + data.trackUri + ' ' + data.username);
+                await addToUserQueue(data.trackUri, data.username, ws);
                 // console.log(username, 'is adding track to queue:', data.trackUri);
                 break;
             case 'remove-from-queue':
                 await removeFromQueue(data.trackUri, username, ws);
                 break;
             case 'get-queue':
-                const queueData = await getQueueData();
-                ws.send(JSON.stringify({ type: 'queue-data', queueItems: queueData }));
+                const virtualQueue = await getRoundRobinQueue();
+                console.log('Sending virtualQueue to client:')
+                ws.send(JSON.stringify({ type: 'queue-data', queueItems: virtualQueue }));
                 break;
             case 'get-playlist':
                 const playlistData = await getPlaylistData(data.playlistId);
@@ -176,6 +188,7 @@ setInterval(() => {
 }, 4e4);
 
 async function getUserQueue(username) {
+    console.log('Getting queue for user:', username);
     try {
         const userQueueData = await db.collection('users').findOne({ username: username }, { projection: { queuedSongs: 1 } });
         return userQueueData ? userQueueData.queuedSongs : [];
@@ -186,7 +199,6 @@ async function getUserQueue(username) {
 }
 
 function updateSong(song, progress_ms) {
-    console.log('Updating song:', song);
     const songData = {
         type: 'track-change',
         track: {
@@ -229,7 +241,7 @@ async function getQueueData() {
 
 
 async function searchSpotify(query) {
-    const spotifyApiUrl = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track`;
+    const spotifyApiUrl = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=50`;
     const response = await fetch(spotifyApiUrl, {
         headers: { 'Authorization': `Bearer ${globalAccessToken}` }
     });
@@ -245,37 +257,83 @@ async function searchSpotify(query) {
 
 async function createUser(username) {
     try {
-        const existingUser = await db.collection('users').findOne({ username: username });
+        const db = client.db('LFDEV'); // Replace 'LFDEV' with your database name
+        const collection = db.collection('users'); // Replace 'users' with your collection name
+
+        // Create a unique index on the 'username' field
+        await collection.createIndex({ username: 1 }, { unique: true });
+
+        // Check if the username already exists
+        const existingUser = await collection.findOne({ username: username });
 
         if (existingUser) {
-            console.log('User already exists');
-            await db.collection('users').updateOne(
-                { username: username },
-                { $set: { queuedSongs: [] } }
-            );
-            console.log('Users queue updated successfully');
+            // Handle the situation where the username already exists
+            console.log('User already exists:', existingUser);
+            // You can return an error message or take appropriate action
         } else {
+            // Proceed with user creation since the username is unique
             const userDocument = {
                 username: username,
                 createdAt: new Date(),
                 roundedRobin: false,
                 queuedSongs: []
             };
-            await db.collection('users').insertOne(userDocument);
-            console.log('User created successfully');
+
+            // Insert the new user document into the collection
+            await collection.insertOne(userDocument);
+            console.log('User created successfully:', userDocument);
+            // You can return a success message or perform additional actions
         }
     } catch (err) {
-        console.error('Error finding/creating user:', err);
+        console.error('Error creating user with unique index:', err);
+        // Handle the error appropriately
     }
 }
 
-async function addSongToQueue(username, trackUri) {
+
+
+async function addSongToQueue(username, trackUri, trackName, artistName, duration_ms) {
     try {
+        // Check if the user already exists
+        const userExists = await db.collection('users').findOne({ username: username });
+
+        if (!userExists) {
+            console.log('User does not exist:', username);
+            // You can handle the user not existing here, such as creating a new user
+            // or simply returning an error message
+            return;
+        }
+
+        // Check if the song is already in the user's queue
+        const songExists = await db.collection('users').findOne({ 
+            username: username, 
+            'queuedSongs.trackUri': trackUri 
+        });
+
+        if (songExists) {
+            console.log('Song already exists in the queue for user:', username);
+            return;
+        }
+
+        // If the song doesn't exist, add it to the user's queue
         await db.collection('users').updateOne(
             { username: username },
-            { $push: { queuedSongs: { trackUri: trackUri, timestamp: new Date(), played: false } } }
+            { 
+                $push: { 
+                    queuedSongs: { 
+                        trackUri: trackUri, 
+                        timestamp: new Date(), 
+                        played: false, 
+                        datePlayed: null, 
+                        trackName: trackName, 
+                        artistName: artistName, 
+                        duration_ms: duration_ms 
+                    } 
+                } 
+            }
         );
-        console.log('Song added to the user\'s queue successfully');
+
+        console.log('Song ' + trackUri + ' added to ' + username + '\'s queue');
     } catch (err) {
         console.error('Error adding song to the user\'s queue:', err);
     }
@@ -283,8 +341,8 @@ async function addSongToQueue(username, trackUri) {
 
 
 
-
 async function queueOldestUnplayedSong(ws) {
+    console.log('running queueOldestUnplayedSong()');
     const users = await db.collection('users').find().toArray();
     
     if(users.length === 0) {
@@ -311,11 +369,68 @@ async function queueOldestUnplayedSong(ws) {
     }
 }
 
-async function roundRobinQueueSongs(ws) {
-    // Fetch users with roundedRobin set to false
-    let users = await db.collection('users').find({ roundedRobin: false }).toArray();
+async function getRoundRobinQueue(ws) {
+    console.log('running getRoundRobinQueue()');
+    let queue = [];
+    let users = await db.collection('users').find().toArray();
+    console.log('Getting round robin queue:');
+    // console log each user
+    // console.log(users);
+    let anyUnplayedSongs = true;
 
-    // Reset roundedRobin for all users if none are found
+    while (anyUnplayedSongs) {
+        anyUnplayedSongs = false;
+
+        for (const user of users) {
+            const unplayedSongs = user.queuedSongs.filter(song => !song.played);
+            if (unplayedSongs.length > 0) {
+                anyUnplayedSongs = true;
+                const oldestUnplayedSong = unplayedSongs.reduce((oldest, current) => {
+                    return (new Date(oldest.timestamp) < new Date(current.timestamp)) ? oldest : current;
+                });
+
+                queue.push({
+                    username: user.username,
+                    song: oldestUnplayedSong
+                });
+
+                // Marking the song as "played" for this iteration
+                oldestUnplayedSong.played = true;
+            }
+        }
+    }
+
+    return queue;
+}
+
+// async function roundRobinQueueSongs() {
+//     console.log('Running roundRobinQueueSongs()');
+
+//     let users = await db.collection('users').find().toArray();
+
+//     for (const user of users) {
+//         const unplayedSongs = user.queuedSongs.filter(song => !song.played);
+
+//         if (unplayedSongs.length > 0) {
+//             const oldestUnplayedSong = unplayedSongs[0]; // Get the oldest unplayed song
+//             console.log('User:', user.username, 'Oldest unplayed song to be queued:', oldestUnplayedSong.trackName);
+
+//             // Add the song to Spotify's queue and mark it as played
+//             await addSongToSpotifyQueue(oldestUnplayedSong, user);
+//             await markSongAsPlayed(user.username, oldestUnplayedSong.trackUri);
+
+//             break; // Exit after queuing one song
+//         }
+//     }
+// }
+
+async function roundRobinQueueSongs() {
+    console.log('Running roundRobinQueueSongs()');
+    let users = await db.collection('users').find({ roundedRobin: false }).toArray();
+    // exclued users without any queued songs
+    users = users.filter(user => user.queuedSongs.length > 0);
+    
+
     if (users.length === 0) {
         await db.collection('users').updateMany({}, { $set: { roundedRobin: false } });
         console.log('All users roundedRobin reset to false.');
@@ -324,47 +439,32 @@ async function roundRobinQueueSongs(ws) {
 
     for (const user of users) {
         let oldestUnplayedSong = user.queuedSongs.filter(song => !song.played)
-                                                 .sort((a, b) => new Date(a.timestamp.$date) - new Date(b.timestamp.$date))[0];
+                                                 .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))[0];
 
         if (!oldestUnplayedSong) {
             console.log('No unplayed songs for user:', user.username);
-
-            // Fetch the user's oldest playlist
-            const playlists = await db.collection('playlists').find({ userName: user.username }).sort({ createdAt: 1 }).toArray();
-            const oldestPlaylist = playlists[0];
-
-            if (oldestPlaylist && oldestPlaylist.tracks) {
-                // Add tracks from the oldest playlist to the user's queuedSongs
-                oldestPlaylist.tracks.forEach(track => {
-                    user.queuedSongs.push({
-                        trackUri: track.trackId, // Assuming trackUri is equivalent to trackId
-                        trackName: track.trackName,
-                        artistName: track.artistName,
-                        timestamp: new Date(), // Current timestamp or some other logic
-                        played: false
-                    });
-                });
-
-                // Now find the oldest unplayed song after adding new songs
-                oldestUnplayedSong = user.queuedSongs.filter(song => !song.played)
-                                                     .sort((a, b) => new Date(a.timestamp.$date) - new Date(b.timestamp.$date))[0];
-            } else {
-                console.log('No playlists found for user:', user.username);
-            }
+            // reset roundedRobin to false for all users
+            // await db.collection('users').updateMany({}, { $set: { roundedRobin: false } });
+            continue;
         }
 
-        if (oldestUnplayedSong) {
-            console.log('Selected User:', user.username);
-            console.log('Oldest Unplayed Song:', oldestUnplayedSong);
+        console.log('Selected User:', user.username, 'Oldest Unplayed Song:', oldestUnplayedSong);
 
-            oldestUnplayedSong.played = true;
-        }
+        const queueSuccess = await addSongToSpotifyQueue(oldestUnplayedSong, user);
+        if (queueSuccess) {
+            // Update the song as played
+            await db.collection('users').updateOne(
+                { username: user.username, 'queuedSongs.trackUri': oldestUnplayedSong.trackUri },
+                { $set: { 'queuedSongs.$.played': true, 'queuedSongs.$.datePlayed': new Date() } }
+            );
 
-        // Update the user's roundedRobin property to true
-        user.roundedRobin = true;
-        await db.collection('users').updateOne({ _id: user._id }, { $set: user });
+            // Verify the update
+            const updatedUser = await db.collection('users').findOne({ username: user.username });
+            const updatedSong = updatedUser.queuedSongs.find(song => song.trackUri === oldestUnplayedSong.trackUri);
+            console.log('Updated song status:', updatedSong);
 
-        if (oldestUnplayedSong) {
+            user.roundedRobin = true;
+            await db.collection('users').updateOne({ _id: user._id }, { $set: user });
             return { user, song: oldestUnplayedSong };
         }
     }
@@ -372,52 +472,149 @@ async function roundRobinQueueSongs(ws) {
     console.log('Processed all users. No unplayed songs left.');
 }
 
-async function addSongToSpotifyQueue(song, user, ws) {
+
+
+
+
+
+
+////////////////////////////////////////////////////////////latest semi working
+// async function roundRobinQueueSongs() {
+//     console.log('Running roundRobinQueueSongs()');
+//     let users = await db.collection('users').find({ roundedRobin: false }).toArray();
+
+//     if (users.length === 0) {
+//         await db.collection('users').updateMany({}, { $set: { roundedRobin: false } });
+//         console.log('All users roundedRobin reset to false.');
+//         users = await db.collection('users').find({ roundedRobin: false }).toArray();
+//     }
+
+//     for (const user of users) {
+//         let oldestUnplayedSong = user.queuedSongs.filter(song => !song.played)
+//                                                  .sort((a, b) => new Date(a.timestamp.$date) - new Date(b.timestamp.$date))[0];
+
+//         if (!oldestUnplayedSong) {
+//             console.log('No unplayed songs for user:', user.username);
+
+//             // Add songs from playlists if no unplayed songs are found
+//             const success = await addSongsFromPlaylistToQueue(user);
+//             if (success) {
+//                 oldestUnplayedSong = user.queuedSongs.filter(song => !song.played)
+//                                                      .sort((a, b) => new Date(a.timestamp.$date) - new Date(b.timestamp.$date))[0];
+//             } else {
+//                 console.log('No playlists found or no songs added from playlist for user:', user.username);
+//             }
+//         }
+
+//         if (oldestUnplayedSong) {
+//             console.log('Selected User:', user.username, 'Oldest Unplayed Song:', oldestUnplayedSong);
+
+//             const queueSuccess = await addSongToSpotifyQueue(oldestUnplayedSong, user);
+//             if (queueSuccess) {
+//                 await markSongAsPlayed(user.username, oldestUnplayedSong.trackUri);
+//                 user.roundedRobin = true;
+//                 await db.collection('users').updateOne({ _id: user._id }, { $set: user });
+//                 return { user, song: oldestUnplayedSong };
+//             }
+//         }
+//     }
+
+//     console.log('Processed all users. No unplayed songs left.');
+// }
+
+
+// async function getNextRoundRobinUserAndSong() {
+//     let users = await db.collection('users').find().sort({ roundedRobin: 1 }).toArray();
+
+//     for (const user of users) {
+//         let oldestUnplayedSong = user.queuedSongs.find(song => !song.played);
+
+//         if (oldestUnplayedSong) {
+//             await addSongToSpotifyQueue(oldestUnplayedSong, user);
+//             await markSongAsPlayed(user.username, oldestUnplayedSong.trackUri);
+
+//             // Update the user's roundedRobin property to the current timestamp
+//             await db.collection('users').updateOne({ _id: user._id }, { $set: { roundedRobin: new Date() } });
+
+//             console.log('Selected User:', user.username, 'Oldest Unplayed Song:', oldestUnplayedSong);
+//             return { user, song: oldestUnplayedSong };
+//         }
+//     }
+
+//     console.log('All users processed. No unplayed songs left.');
+//     return null;
+// }
+
+async function addSongToSpotifyQueue(song, user) {
+    const spotifyApiUrl = `https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(song.trackUri)}`;
     try {
-        const spotifyApiUrl = `https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(song.trackUri)}`;
         const response = await fetch(spotifyApiUrl, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${globalAccessToken}` }
         });
 
         if (!response.ok) {
-            const errorData = await response.json();
-            console.error('Error adding track to queue:', errorData);
-            ws.send(JSON.stringify({ type: 'queue-update', status: 'error', message: 'Error adding track to queue' }));
-            return;
+            console.error('Error adding track to Spotify queue:', await response.text());
+            return false;
         }
 
-        await markSongAsPlayed(user.username, song.trackUri);
-        ws.send(JSON.stringify({ type: 'queue-update', status: 'added' }));
+        console.log(`Song ${song.trackName} added to Spotify queue for user ${user.username}`);
+        return true;
     } catch (error) {
         console.error('Error in addSongToSpotifyQueue:', error);
-        ws.send(JSON.stringify({ type: 'queue-update', status: 'error', message: 'An error occurred while adding the track to the queue.' }));
+        return false;
     }
 }
 
-async function markSongAsPlayed(username, trackUri) {
-    await db.collection('users').findOneAndUpdate(
-        { username: username, 'queuedSongs.trackUri': trackUri },
-        { $set: { 'queuedSongs.$.played': true } }
-    );
-    console.log('Track marked as played:', trackUri);
-}
 
-async function addToQueue(trackUri, username, ws) {
+
+
+// async function addSongToSpotifyQueue(song, user, ws) {
+//     try {
+//         const spotifyApiUrl = `https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(song.trackUri)}`;
+//         const response = await fetch(spotifyApiUrl, {
+//             method: 'POST',
+//             headers: { 'Authorization': `Bearer ${globalAccessToken}` }
+//         });
+
+//         if (!response.ok) {
+//             const errorData = await response.json();
+//             console.error('Error adding track to queue:', errorData);
+//             ws.send(JSON.stringify({ type: 'queue-update', status: 'error', message: 'Error adding track to queue' }));
+//             return;
+//         }
+
+//         // await markSongAsPlayed(user.username, song.trackUri);
+//         // ws.send(JSON.stringify({ type: 'queue-update', status: 'added' }));
+//     } catch (error) {
+//         console.error('Error in addSongToSpotifyQueue:', error);
+//         ws.send(JSON.stringify({ type: 'queue-update', status: 'error', message: 'An error occurred while adding the track to the queue.' }));
+//     }
+// }
+
+// async function markSongAsPlayed(username, trackUri) {
+//     await db.collection('users').updateOne(
+//         { username: username, 'queuedSongs.trackUri': trackUri },
+//         { $set: { 'queuedSongs.$.played': true, 'queuedSongs.$.datePlayed': new Date() } }
+//     );
+//     console.log('Marked song as played:', trackUri, 'for user:', username);
+// }
+
+async function addToUserQueue(trackUri, username, ws) {
     try {
-        console.log(username, 'is adding track to queue:', trackUri);
+        // console.log(username, 'is adding track to queue:', trackUri);
         const trackId = trackUri.split(':').pop();
-        console.log(username, 'is adding track to queue:', trackId)
         
         // Fetch song details to check its length
         const songDetails = await fetchSongDetails(trackId); // Implement this function to fetch song details from Spotify
-        console.log('songDetails', songDetails);
+        // console.log('songDetails', songDetails);
         if (songDetails.duration_ms > 480000) {
             ws.send(JSON.stringify({ type: 'queue-error', message: 'Song is longer than 8 minutes' }));
             return;
         }
-        console.log('Adding to queue:', trackUri, songDetails.name, songDetails.artists[0].name, username);
-        addSongToQueue(username, trackUri);
+        console.log(username, 'is adding track to queue:', trackId)
+        // console.log('Adding to queue:', trackUri, songDetails.name, songDetails.artists[0].name, username);
+        addSongToQueue(username, trackUri, songDetails.name, songDetails.artists[0].name, songDetails.duration_ms);
         // createUser(trackUri, songDetails.name, songDetails.artists[0].name, username);
         // Check if song is already in the current Spotify queue
         const currentQueue = await getQueueData();
@@ -448,23 +645,23 @@ async function addToQueue(trackUri, username, ws) {
         }
 
         // Add song to Spotify's queue
-        const spotifyApiUrl = `https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(trackUri)}`;
-        const response = await fetch(spotifyApiUrl, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${globalAccessToken}` }
-        });
+        // const spotifyApiUrl = `https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(trackUri)}`;
+        // const response = await fetch(spotifyApiUrl, {
+        //     method: 'POST',
+        //     headers: { 'Authorization': `Bearer ${globalAccessToken}` }
+        // });
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            console.error('Error adding track to queue:', errorData);
-            ws.send(JSON.stringify({ type: 'queue-update', status: 'error', message: 'Error adding track to queue' }));
-        } else {
-            // Add to custom queue
-            // addToMyQueue({ trackId: trackId, trackUri: trackUri });
-            ws.send(JSON.stringify({ type: 'queue-update', status: 'added' }));
-        }
+        // if (!response.ok) {
+        //     const errorData = await response.json();
+        //     console.error('Error adding track to queue:', errorData);
+        //     ws.send(JSON.stringify({ type: 'queue-update', status: 'error', message: 'Error adding track to queue' }));
+        // } else {
+        //     // Add to custom queue
+        //     // addToMyQueue({ trackId: trackId, trackUri: trackUri });
+        //     ws.send(JSON.stringify({ type: 'queue-update', status: 'added' }));
+        // }
     } catch (error) {
-        console.error('Error in addToQueue:', error);
+        console.error('Error in addToUserQueue:', error);
         ws.send(JSON.stringify({ type: 'queue-update', status: 'error', message: 'An error occurred while adding the track to the queue.' }));
     }
 }
@@ -529,8 +726,11 @@ async function getCurrentPlayingTrack(access_token) {
                 albumName: track.album.name,
                 albumImageUrl: track.album.images && track.album.images.length > 0 ? track.album.images[0].url : null
             };
-            queueOldestUnplayedSong();
+            roundRobinQueueSongs();
+            // getNextRoundRobinUserAndSong()
+
             await collection.insertOne(newTrackEntry);
+            console.log('newTrackEntry:', newTrackEntry);
             updateSong(newTrackEntry, body.progress_ms);
             // console.log(`Track (${track.id}) has been logged`);
         } else {
@@ -545,7 +745,6 @@ async function getCurrentPlayingTrack(access_token) {
         return;
     }
 }
-
 
 async function getPlaylistData(playlistUrl) {
     try {
@@ -575,11 +774,12 @@ async function getPlaylistData(playlistUrl) {
 }
 
 async function handlePlaylistSubmission(data) {
-    createUser(data.user);
     try {
         const { user, playlistName, tracks } = data;
-        const playlistDocument = {
-            userName: user,
+
+        const standardizedUsername = user.trim().toLowerCase();
+
+        const playlist = {
             playlistName: playlistName,
             tracks: tracks.map(track => ({
                 trackId: track.id,
@@ -590,15 +790,35 @@ async function handlePlaylistSubmission(data) {
                 albumId: track.album.id,
                 albumName: track.album.name,
                 albumImageUrl: track.album.images[0].url
-            })),
-            createdAt: new Date()
+            }))
         };
-        await db.collection('playlists').insertOne(playlistDocument);
-        console.log('Playlist submitted successfully');
+
+        const userEntry = await db.collection('users').findOne({ username: standardizedUsername });
+
+        if (userEntry) {
+            await db.collection('users').updateOne(
+                { username: standardizedUsername },
+                { $addToSet: { playlists: playlist } }
+            );
+            console.log('Playlist added to user entry successfully');
+        } else {
+            const newUser = {
+                username: standardizedUsername,
+                roundedRobin: false,
+                playlists: [playlist],
+                queuedSongs: []
+            };
+            await db.collection('users').insertOne(newUser);
+            console.log('New user entry with playlist created successfully');
+        }
     } catch (err) {
         console.error('Error submitting playlist:', err);
     }
 }
+
+
+
+
 
 // authintication stuff
 app.get('/login', (req, res) => {
@@ -641,7 +861,7 @@ app.get('/callback', async (req, res) => {
         client.db('LFDEV').collection('spotify_info').updateOne({}, { $set: { timestamp: Date.now(), access_token, refresh_token } }, { upsert: true });
         globalAccessToken = access_token;
         
-        res.send('Success! You can now close the window.');
+        res.redirect('/');
     } catch (err) {
         console.error('Error in /callback:', err);
         res.send('Failed to retrieve access token.');
