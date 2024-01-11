@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SMWYG</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" integrity="sha512-b2QcS5SsA8tZodcDtGRELiGv5SaKSk1vDHDaQRda0htPYWZ6046lr3kJ5bAAQdpV2mmA/4v0wQF9MyU6/pDIAg==" crossorigin="anonymous" referrerpolicy="no-referrer">
+    <style>
+      body {
+        background-color: #1a1a1a;
+        font-family: 'Roboto', sans-serif;
+      }
+      #background-image {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        filter: blur(16px);
+        z-index: -1;
+      }
+      .card {
+        background-color: rgba(0, 0, 0, 0.7);
+        box-shadow: 0 0 30px rgba(0, 0, 0, 0.3);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      #album-image {
+        width: 150px;
+        height: 150px;
+      }
+      .progress-container {
+        position: relative;
+      }
+      .progress {
+        height: 8px;
+        border-radius: 4px;
+        margin-bottom: 0;
+        background-color: rgba(255, 255, 255, 0.1);
+      }
+      #track-progress {
+        background-color: #1db954;
+        border-radius: 4px;
+      }
+      #track-time {
+        position: absolute;
+        top: 0px;
+        right: 0;
+        margin: 5px;
+        padding: 5px;
+        color: #555;
+      }
+      .card-body {
+        display: flex;
+        align-items: center;
+        padding: 0;
+        margin: 0;
+      }
+      .track-info {
+        flex-grow: 1;
+        padding: 0 24px 0 24px;
+      }
+      #track-name {
+        color: #666;
+        font-size: 24px;
+        line-height: 1;
+      }
+      #track-artists {
+        color: #444;
+        font-size: 14px;
+        margin-top: 2px;
+        margin-bottom: 16px;
+      }
+      .nav-underline .nav-link.active {
+        color: #1db954;
+      }
+      .nav-underline .nav-link {
+        color: #fff;
+        font-weight: normal !important;
+        padding: 0;
+      }
+      .nav-container, .recently-played-container {
+        background-color: rgba(0, 0, 0, 0.7);
+        box-shadow: 0 0 30px rgba(0, 0, 0, 0.3);
+        border-radius: 12px;
+        padding: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="background-image"></div>
+    <div class="container-fluid p-4">
+      <div class="row">
+        <div class="col mb-4">
+          <div class="card mb-4 border border-black border-2">
+            <div class="card-body">
+              <img src="https://dummyimage.com/150x150/000/FFF.png&text=+Album+Image" alt="Album Cover" id="album-image" class="img-fluid">
+              <div class="track-info">
+                <div id="track-name"><a href="" target="_blank" class="text-reset text-decoration-none">Track Name</a></div>
+                <div id="track-artists">Track Artists</div>
+                <div class="progress-container">
+                  <div class="progress mb-3">
+                    <div id="track-progress" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                  </div>
+                  <small id="track-time">0:00 / 0:00</small>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="nav-container container-fluid border border-black border-2">
+            <nav>
+              <div class="nav nav-underline mb-4" id="nav-tab" role="tablist">
+                <button class="nav-link active" id="nav-queue-tab" data-bs-toggle="tab" data-bs-target="#nav-queue" type="button" role="tab" aria-controls="nav-queue" aria-selected="true">Queue</button>
+                <button class="nav-link" id="nav-profile-tab" data-bs-toggle="tab" data-bs-target="#nav-profile" type="button" role="tab" aria-controls="nav-profile" aria-selected="false">Profile</button>
+                <button class="nav-link" id="nav-search-tab" data-bs-toggle="tab" data-bs-target="#nav-search" type="button" role="tab" aria-controls="nav-search" aria-selected="false">Search</button>
+              </div>
+            </nav>
+            <div class="tab-content" id="nav-tabContent">
+              <div class="tab-pane fade show active" id="nav-queue" role="tabpanel" aria-labelledby="nav-queue-tab" tabindex="0">
+                <div class="table-responsive">
+                  <table class="table table-dark table-striped table-hover">
+                    <thead class="h5">
+                      <tr>
+                        <th>Song</th>
+                        <th>Artists</th>
+                        <th>Album</th>
+                      </tr>
+                    </thead>
+                    <tbody id="queue"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="tab-pane fade" id="nav-profile" role="tabpanel" aria-labelledby="nav-profile-tab" tabindex="0">
+                Profile
+              </div>
+              <div class="tab-pane fade" id="nav-search" role="tabpanel" aria-labelledby="nav-search-tab" tabindex="0">
+                <form class="d-flex">
+                  <input class="form-control" type="search" placeholder="Search" aria-label="Search">
+                  <button class="btn btn-outline-success" type="submit">Search</button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col">
+          <div class="recently-played-container container-fluid border border-black border-2">
+            <h2 class="fw-bold text-light mb-3">Recently Played Tracks</h2>
+            <div class="table-responsive">
+              <table class="table table-dark table-striped table-hover">
+                <thead class="h5">
+                  <tr>
+                    <th>Song</th>
+                    <th>Artists</th>
+                    <th>Album</th>
+                  </tr>
+                </thead>
+                <tbody id="recently-played"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js" integrity="sha512-X/YkDZyjTf4wyc2Vy16YGCPHwAY8rZJY+POgokZjQB2mhIRFJCckEGc6YyX9eNsPfn0PzThEuNs+uaomE5CO6A==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="/js/index.js"></script>
+  </body>
+</html>
