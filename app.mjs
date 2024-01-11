@@ -1,455 +1,293 @@
+import { fileURLToPath } from 'url';
+import path, { dirname } from 'path';
 import express from 'express';
-import { MongoClient, ServerApiVersion } from "mongodb";
-import fs from 'fs';
-import { WebSocketServer } from 'ws';
+import { WebSocket, WebSocketServer } from 'ws';
+import { MongoClient, ServerApiVersion } from 'mongodb';
 
-const { PORT, MONGODB, AUTH, OPENAI_API_KEY, SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET } = process.env;
-const client = new MongoClient(MONGODB, { serverApi: ServerApiVersion.v1 });
-const redirect_uri = 'https://spotify.lucasfarmer.com/callback';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const { PORT, MONGODB, SPOTIFY_CLIENTID, SPOTIFY_CLIENTSECRET } = process.env;
+let SPOTIFY_ACCESSTOKEN, SPOTIFY_ATEXPIRESAT, SPOTIFY_REFRESHTOKEN, SPOTIFY_CURRENTLYPLAYING;
+const wssClients = new Set();
 
 const app = express();
-const server = app.listen(PORT, () => { console.log(`The NodeJS application is running on port ${PORT};`) });
-const wss = new WebSocketServer({ server });
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(express.static('public'));
-app.set('view engine', 'pug');
-app.set('views', './views');
 app.locals.pretty = true;
+app.set('trust proxy', true);
+app.set('views', path.join(__dirname, 'views'));
+app.use(express.static(path.join(__dirname, 'public')));
+app.disable('x-powered-by');
 
-const db = client.db('LFDEV');
-const collection = db.collection('spotify');
-
-const interval = 4000;
-let globalAccessToken;
-let globalRefreshToken;
-let refreshIntervalId;
-
-console.log('Starting Spotify app');
-
-async function loadAccessToken() {
-    try {
-        const tokenInfo = await client.db('LFDEV').collection('spotify_info').findOne({}, { sort: { _timestamp: -1 } });
-        if (tokenInfo) {
-            globalAccessToken = tokenInfo.access_token;
-            globalRefreshToken = tokenInfo.refresh_token;
-            console.log('Loaded tokens from DB. Access token:', globalAccessToken, 'Refresh token:', globalRefreshToken);
-        } else {
-            console.log('No token info found in DB');
-        }
-    } catch (err) {
-        console.error('Error loading access token from DB:', err);
-    }
-}
-loadAccessToken();
-
-wss.on('connection', (ws) => {
-    console.log('A user connected');
-    ws.isAlive = true;
-    ws.on('pong', () => {
-        ws.isAlive = true;
-    });
-    ws.on('message', async (message) => {
-        // console.log('Received message:', message);
-        const data = JSON.parse(message);
-
-        switch (data.action) {
-            case 'search':
-                const searchResults = await searchSpotify(data.query);
-                ws.send(JSON.stringify({ type: 'search-results', results: searchResults }));
-                break;
-            case 'add-to-queue':
-                await addToQueue(data.trackUri, ws);
-                break;
-            case 'get-queue':
-                const queueData = await getQueueData();
-                ws.send(JSON.stringify({ type: 'queue-data', queueItems: queueData }));
-                break;
-            case 'get-playlist':
-                const playlistData = await getPlaylistData(data.playlistId);
-                ws.send(JSON.stringify({ type: 'playlist-data', playlistItems: playlistData }));
-                break;
-            case 'submit-playlist':
-                await handlePlaylistSubmission(data);
-                break;
-            case 'get-playlists':
-                try {
-                    const playlists = await db.collection('playlists').find({}).toArray();
-                    ws.send(JSON.stringify({ type: 'playlist-data', playlists }));
-                } catch (err) {
-                    console.error('Error fetching playlists:', err);
-                    ws.send(JSON.stringify({ type: 'error', message: 'Failed to fetch playlists' }));
-                }
-                break;
-        }
-    });
-
-    ws.on('close', () => {
-        console.log('A user disconnected');
-    });
+const wss = new WebSocketServer({ 
+	server: app.listen(PORT, () => { 
+		console.log(`[${new Date().toISOString()}]: The NodeJS application (${__dirname.split('/').pop()}) is running on port ${PORT};`) 
+	})
 });
 
-setInterval(() => {
-    wss.clients.forEach((ws) => {
-        if (!ws.isAlive) return ws.terminate();
-        ws.isAlive = false;
-        ws.ping();
-    });
-}, 4e4);
+const mongo = new MongoClient(MONGODB, { serverApi: ServerApiVersion.v1 });
 
-function updateSong(song, progress_ms) {
-    console.log('Updating song:', song);
-    const songData = {
-        type: 'track-change',
-        track: {
-            trackId: song.trackId,
-            artistId: song.artistId,
-            artistName: song.artistName,
-            trackName: song.trackName,
-            albumName: song.albumName,
-            artistImageUrl: song.artistImageUrl,
-            trackDuration: song.trackDuration,
-        },
-        progress_ms: progress_ms
-    };
-
-    wss.clients.forEach((client) => {
-        client.send(JSON.stringify(songData));
-    });
+function generateRandomId(length) {
+	const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+	return Array.from({ length }, () => characters[Math.floor(Math.random() * characters.length)]).join('');
 }
 
-async function getQueueData() {
-    try {
-        const response = await fetch('https://api.spotify.com/v1/me/player/queue', {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${globalAccessToken}`
-            }
-        });
+wss.on('connection', async (ws, req) => {
+	wssClients.add(ws);
+	const wssClientId = generateRandomId(16);
+	const wssClientIp = req.headers['x-forwarded-for'].split(',')[0].trim();
 
-        if (!response.ok) {
-            throw new Error('Spotify API request failed: ' + response.statusText);
-        }
+	console.log(`[${new Date().toISOString()}]: ${wssClientIp} websocket client (${wssClientId}) connected`);
 
-        const data = await response.json();
-        return data;
-    } catch (err) {
-        console.error('Error in getQueueData:', err);
-        return [];
-    }
-}
+	setInterval(() => {
+		try {
+			if (ws.readyState === WebSocket.OPEN) ws.ping();
+		} catch (error) {
+			console.error(`[${new Date().toISOString()}]: ${error.message}`);
+		}
+	}, 20e3);
 
+	if (ws.readyState === WebSocket.OPEN) {
+		ws.send(JSON.stringify({
+			type: 'spotify-currently-playing',
+			data: SPOTIFY_CURRENTLYPLAYING
+		}));
 
-async function searchSpotify(query) {
-    const spotifyApiUrl = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track`;
-    const response = await fetch(spotifyApiUrl, {
-        headers: { 'Authorization': `Bearer ${globalAccessToken}` }
-    });
+		try {
+			const spotifyPlayerHistory = await mongo.db('spotify').collection('spotify-player-history').find({}).sort({ timestamp: -1 }).limit(20).toArray();
+			ws.send(JSON.stringify({
+				type: 'spotify-player-history',
+				data: spotifyPlayerHistory
+			}));
+		} catch (error) {
+			console.error(`[${new Date().toISOString()}]: ${error.message}`);
+		}
+	}
 
-    if (!response.ok) {
-        console.error('Spotify API search error:', response.statusText);
-        return [];
-    }
+	ws.on('error', (error) => {
+		wssClients.delete(ws);
+		console.error(`[${new Date().toISOString()}]: ${wssClientIp} websocket client (${wssClientId}) encountered an error (${error.message})`);
+	});
 
-    const data = await response.json();
-    return data.tracks.items;
-}
-
-let myQueue = []; // This will store your custom queue
-
-async function addToQueue(trackUri, ws) {
-    try {
-        const trackId = trackUri.split(':').pop();
-
-        // Fetch song details to check its length
-        const songDetails = await fetchSongDetails(trackId); // Implement this function to fetch song details from Spotify
-        if (songDetails.duration_ms > 480000) {
-            ws.send(JSON.stringify({ type: 'queue-error', message: 'Song is longer than 8 minutes' }));
-            return;
-        }
-
-        // Check if song is already in the current Spotify queue
-        const currentQueue = await getQueueData();
-        if (currentQueue.queue && currentQueue.queue.some(queue => queue.id === trackId)) {
-
-            ws.send(JSON.stringify({ type: 'queue-error', status: 'error', message: 'Song is already in the queue' }));
-            return;
-        }
-
-        // Check if song has been played in the last 12 hours
-        const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000).getTime();
-        const recentPlay = await db.collection('spotify').findOne({
-            trackId: trackId,
-            _timestamp: { $gte: twelveHoursAgo }
-        });
-
-        if (recentPlay) {
-            const availableAt = new Date(recentPlay._timestamp + 12 * 60 * 60 * 1000);
-            const availableAtString = availableAt.toLocaleString('en-US', { timeZone: 'CST6CDT' });
-            ws.send(JSON.stringify({
-                type: 'queue-update',
-                status: 'error',
-                message: 'This song has been played in the last 12 hours.',
-                availableAt: availableAtString
-            }));
-            return;
-        }
-
-        // Add song to Spotify's queue
-        const spotifyApiUrl = `https://api.spotify.com/v1/me/player/queue?uri=${encodeURIComponent(trackUri)}`;
-        const response = await fetch(spotifyApiUrl, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${globalAccessToken}` }
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            console.error('Error adding track to queue:', errorData);
-            ws.send(JSON.stringify({ type: 'queue-update', status: 'error', message: 'Error adding track to queue' }));
-        } else {
-            // Add to custom queue
-            addToMyQueue({ trackId: trackId, trackUri: trackUri });
-            ws.send(JSON.stringify({ type: 'queue-update', status: 'added' }));
-        }
-    } catch (error) {
-        console.error('Error in addToQueue:', error);
-        ws.send(JSON.stringify({ type: 'queue-update', status: 'error', message: 'An error occurred while adding the track to the queue.' }));
-    }
-}
-
-function addToMyQueue(songDetails) {
-    myQueue.push(songDetails);
-}
-
-function removeFromMyQueue(trackId) {
-    myQueue = myQueue.filter(song => song.trackId !== trackId);
-}
-
-function isSongInMyQueue(trackId) {
-    return myQueue.some(song => song.trackId === trackId);
-}
-
-async function fetchSongDetails(trackId) {
-    const url = `https://api.spotify.com/v1/tracks/${trackId}`;
-    const response = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${globalAccessToken}` }
-    });
-    if (!response.ok) {
-        throw new Error('Failed to fetch song details');
-    }
-    return await response.json();
-}
-
-async function getCurrentPlayingTrack(access_token) {
-    const url = 'https://api.spotify.com/v1/me/player/currently-playing';
-    const headers = { 'Authorization': `Bearer ${access_token}` };
-    
-
-    try {
-        const response = await fetch(url, { headers });
-        if (!response.ok) {
-            return;
-        }
-        const body = await response.json();
-        if (!body.item) {
-            return;
-        }
-        const track = body.item;
-        const recentTrack = await collection.findOne({}, { sort: { _timestamp: -1 } });
-        if (!recentTrack || recentTrack.trackId !== track.id) {
-            let artistImageUrl = null;
-            if (track.artists.length > 0) {
-                const firstArtistResponse = await fetch(`https://api.spotify.com/v1/artists/${track.artists[0].id}`, { headers });
-                const firstArtistData = await firstArtistResponse.json();
-                artistImageUrl = firstArtistData.images && firstArtistData.images.length > 0 ? firstArtistData.images[0].url : null;
-            }
-
-            const newTrackEntry = {
-                _timestamp: Date.now(),
-                trackId: track.id,
-                trackName: track.name,
-                trackDuration: track.duration_ms,
-                artistId: track.artists.length > 0 ? track.artists[0].id : null,
-                artistName: track.artists.length > 0 ? track.artists[0].name : null,
-                artistImageUrl: artistImageUrl,
-                albumId: track.album.id,
-                albumName: track.album.name,
-                albumImageUrl: track.album.images && track.album.images.length > 0 ? track.album.images[0].url : null
-            };
-            console.log('trackDuration: ', newTrackEntry.trackDuration);
-            await collection.insertOne(newTrackEntry);
-            updateSong(newTrackEntry, body.progress_ms);
-            // console.log(`Track (${track.id}) has been logged`);
-        } else {
-            // updateSong(recentTrack, body.progress_ms);
-            // console.log('Track is already in the database');
-        }
-    } catch (err) {
-        console.error('Error in getCurrentPlayingTrack:', err);
-    }
-}
-
-async function getPlaylistData(playlistUrl) {
-    try {
-        const urlParts = playlistUrl.split('/');
-        const playlistIdPart = urlParts[urlParts.length - 1];
-        const playlistId = playlistIdPart.split('?')[0];
-
-        const playlistApiUrl = `https://api.spotify.com/v1/playlists/${playlistId}`;
-
-        const response = await fetch(playlistApiUrl, {
-            headers: { 'Authorization': `Bearer ${globalAccessToken}` }
-        });
-
-        if (!response.ok) {
-            console.error('Spotify API playlist error:', response.statusText);
-            return [];
-        }
-
-        const data = await response.json();
-        return data.tracks.items;
-    } catch (err) {
-        console.error('Error getting playlist data:', err);
-        return [];
-    }
-}
-
-async function handlePlaylistSubmission(data) {
-    try {
-        const { user, playlistName, tracks } = data;
-        const playlistDocument = {
-            userName: user,
-            playlistName: playlistName,
-            tracks: tracks.map(track => ({
-                trackId: track.id,
-                trackName: track.name,
-                trackDuration: track.duration_ms,
-                artistId: track.artists[0].id,
-                artistName: track.artists[0].name,
-                albumId: track.album.id,
-                albumName: track.album.name,
-                albumImageUrl: track.album.images[0].url
-            })),
-            createdAt: new Date()
-        };
-        await db.collection('playlists').insertOne(playlistDocument);
-        console.log('Playlist submitted successfully');
-    } catch (err) {
-        console.error('Error submitting playlist:', err);
-    }
-}
-
-
-app.get(['/', '/tracks'], async (req, res) => {
-    try {
-        const page = parseInt(req.query.page) || 1;
-        const pageSize = parseInt(req.query.pageSize) || 20;
-        const totalTracks = await collection.countDocuments();
-        const tracks = await collection.find({}).skip((page - 1) * pageSize).limit(pageSize).sort({_timestamp: -1}).toArray();
-        const recentTrack = tracks[0];
-
-        res.render('tracks', { tracks, recentTrack, page, totalTracks, pageSize });
-    } catch (err) {
-        console.error(err);
-        res.status(500).send('Server error');
-    }
+	ws.on('close', () => {
+		wssClients.delete(ws);
+		console.log(`[${new Date().toISOString()}]: ${wssClientIp} websocket client (${wssClientId}) disconnected`);
+	});
 });
 
-// authintication stuff
+wss.on('error', (error) => {
+	console.error(`[${new Date().toISOString()}]: ${error.message}`);
+});
+
+async function refreshSpotifyAccessToken() {
+	try {
+		const requestOptions = {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/x-www-form-urlencoded',
+				'Authorization': 'Basic ' + (new Buffer.from(`${SPOTIFY_CLIENTID}:${SPOTIFY_CLIENTSECRET}`).toString('base64'))
+			},
+			body: `grant_type=refresh_token&refresh_token=${SPOTIFY_REFRESHTOKEN}`
+		};
+
+		const spotifyResponse = await fetch('https://accounts.spotify.com/api/token', requestOptions);
+
+		if (spotifyResponse.ok) {
+			const spotifyAuthorizationData = await spotifyResponse.json();
+
+			SPOTIFY_ACCESSTOKEN = spotifyAuthorizationData.access_token;
+			SPOTIFY_ATEXPIRESAT = Date.now() + (spotifyAuthorizationData.expires_in * 1e3)
+
+			// drop mongoDB database
+			// await mongo.db('spotify').dropDatabase();
+
+			try {
+				await mongo.db('spotify').collection('spotify-authorization').updateOne({}, {
+					$set: {
+						access_token: SPOTIFY_ACCESSTOKEN,
+						access_token_expires_at: SPOTIFY_ATEXPIRESAT
+					}
+				}, { upsert: true });
+
+				console.log(`[${new Date().toISOString()}]: Successfully refreshed the access_token for Spotify Web API`);
+			} catch (error) {
+				console.error(`[${new Date().toISOString()}]: ${error.message}`);
+				throw new Error('Failed to update the Spotify Web API access_token on MongoDB');
+			}
+		} else {
+			throw new Error('Failed to refresh the access_token for Spotify Web API');
+		}
+	} catch (error) {
+		console.error(`[${new Date().toISOString()}]: ${error.message}`);
+	}
+}
+
+async function setSpotifyAuthorizationTokens() {
+	try {
+		if (!SPOTIFY_ACCESSTOKEN && !SPOTIFY_ATEXPIRESAT && !SPOTIFY_REFRESHTOKEN) {
+			const spotifyAuthorizationData = await mongo.db('spotify').collection('spotify-authorization').findOne();
+
+			if (!spotifyAuthorizationData) {
+				throw new Error(`Authorize Spotify Web API at https://${__dirname.split('/').pop()}/login`);
+			}
+
+			SPOTIFY_ACCESSTOKEN = spotifyAuthorizationData.access_token;
+			SPOTIFY_ATEXPIRESAT = spotifyAuthorizationData.access_token_expires_at;
+			SPOTIFY_REFRESHTOKEN = spotifyAuthorizationData.refresh_token;
+
+			if (SPOTIFY_ATEXPIRESAT - Date.now() < 300e3) await refreshSpotifyAccessToken();
+		} else if (SPOTIFY_ATEXPIRESAT - Date.now() < 300e3) {
+			await refreshSpotifyAccessToken();
+		}
+
+		setTimeout(setSpotifyAuthorizationTokens, (SPOTIFY_ATEXPIRESAT - Date.now()) - 300e3);
+	} catch (error) {
+		console.error(`[${new Date().toISOString()}]: ${error.message}`);
+		return setTimeout(setSpotifyAuthorizationTokens, 60e3);
+	}
+}
+
+await setSpotifyAuthorizationTokens();
+
+async function saveSpotifyPlayerHistory() {
+	try {
+		const spotifyLastPlayed = await mongo.db('spotify').collection('spotify-player-history').findOne({}, { sort: { timestamp: -1 } });
+
+		if (spotifyLastPlayed === null) {
+			try {
+				await mongo.db('spotify').collection('spotify-player-history').insertOne({
+					item: SPOTIFY_CURRENTLYPLAYING.item,
+					timestamp: SPOTIFY_CURRENTLYPLAYING.timestamp
+				});
+			} catch (error) {
+				console.error(`[${new Date().toISOString()}]: ${error.message}`);
+				throw new Error(`Failed to save currently playing from Spotify WEB API to MongoDB for spotify-player-history`);
+			}
+		} else {
+			if (SPOTIFY_CURRENTLYPLAYING.item.uri != spotifyLastPlayed.item.uri) {
+				try {
+					await mongo.db('spotify').collection('spotify-player-history').insertOne({
+						item: SPOTIFY_CURRENTLYPLAYING.item,
+						timestamp: SPOTIFY_CURRENTLYPLAYING.timestamp
+					});
+
+					wssClients.forEach(async wsClient => {
+						if (wsClient.readyState === WebSocket.OPEN) {
+							wsClient.send(JSON.stringify({
+								type: 'spotify-player-history-update',
+								data: {
+									item: SPOTIFY_CURRENTLYPLAYING.item,
+									timestamp: SPOTIFY_CURRENTLYPLAYING.timestamp
+								}
+							}));
+						}
+					});
+
+				} catch (error) {
+					console.error(`[${new Date().toISOString()}]: ${error.message}`);
+					throw new Error(`Failed to save currently playing from Spotify WEB API to MongoDB for spotify-player-history`);
+				}
+			}
+		}
+	} catch (error) {
+		console.error(`[${new Date().toISOString()}]: ${error.message}`);
+	}
+}
+
+async function setSpotifyCurrentlyPlaying() {
+	try {
+		const requestOptions = {
+			method: 'GET',
+			headers: { 'Authorization': `Bearer ${SPOTIFY_ACCESSTOKEN}` }
+		};
+
+		const spotifyResponse = await fetch('https://api.spotify.com/v1/me/player/currently-playing', requestOptions);
+
+		if (spotifyResponse.ok && spotifyResponse.status === 200) {
+			SPOTIFY_CURRENTLYPLAYING = await spotifyResponse.json();
+
+			wssClients.forEach(async wsClient => {
+				if (wsClient.readyState === WebSocket.OPEN) {
+					wsClient.send(JSON.stringify({
+						type: 'spotify-currently-playing',
+						data: SPOTIFY_CURRENTLYPLAYING
+					}));
+				}
+			});
+
+			await saveSpotifyPlayerHistory();
+		} else if (spotifyResponse.ok) {
+			throw new Error(`Failed to get currently playing from Spotify WEB API (${spotifyResponse.statusText})`);
+		}
+	} catch (error) {
+		console.error(`[${new Date().toISOString()}]: ${error.message}`);
+		return setTimeout(setSpotifyCurrentlyPlaying, 5e3);
+	}
+
+	setTimeout(setSpotifyCurrentlyPlaying, 1e3);
+}
+
+await setSpotifyCurrentlyPlaying();
+
+
+
+app.get('/', async (req, res) => {
+	res.sendFile(__dirname + '/views/index.html');
+});
+
 app.get('/login', (req, res) => {
-    const scope = 'user-read-currently-playing user-read-recently-played user-modify-playback-state user-read-playback-state';
-    res.redirect('https://accounts.spotify.com/authorize?' +
-    'response_type=code' +
-    '&client_id=' + SPOTIFY_CLIENT_ID +
-    (scope ? '&scope=' + encodeURIComponent(scope) : '') +
-    '&redirect_uri=' + encodeURIComponent(redirect_uri));
+	const params = new URLSearchParams({
+		client_id: SPOTIFY_CLIENTID,
+		response_type: 'code',
+		redirect_uri: `https://${__dirname.split('/').pop()}/callback`,
+		scope: 'user-read-playback-state user-modify-playback-state user-read-currently-playing user-read-recently-played'
+	});
+	res.redirect(`https://accounts.spotify.com/authorize?${params.toString()}`);
 });
 
 app.get('/callback', async (req, res) => {
-    console.log('/callback');
-    const code = req.query.code;
-
-    const authOptions = {
-        method: 'POST',
-        headers: {
-            'Authorization': 'Basic ' + (Buffer.from(SPOTIFY_CLIENT_ID + ':' + SPOTIFY_CLIENT_SECRET).toString('base64')),
-            'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: new URLSearchParams({
-            code: code,
-            redirect_uri: redirect_uri,
-            grant_type: 'authorization_code'
-        })
-    };
-
-    try {
-        const response = await fetch('https://accounts.spotify.com/api/token', authOptions);
-
-        if (!response.ok) {
-            throw new Error('Failed to retrieve access token: ' + response.statusText);
-        }
-
-        const body = await response.json();
-        const access_token = body.access_token;
-        const refresh_token = body.refresh_token;
-
-        client.db('LFDEV').collection('spotify_info').updateOne({}, { $set: { timestamp: Date.now(), access_token, refresh_token } }, { upsert: true });
-        globalAccessToken = access_token;
-        
-        res.send('Success! You can now close the window.');
-    } catch (err) {
-        console.error('Error in /callback:', err);
-        res.send('Failed to retrieve access token.');
-    }
+	const callbackCode = req.query.code;
+	if (callbackCode) {
+		try {
+			const requestOptions = {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/x-www-form-urlencoded',
+					'Authorization': 'Basic ' + (new Buffer.from(`${SPOTIFY_CLIENTID}:${SPOTIFY_CLIENTSECRET}`).toString('base64'))
+				},
+				body: `grant_type=authorization_code&code=${callbackCode}&redirect_uri=https://${__dirname.split('/').pop()}/callback`
+			};
+			const requestResponse = await fetch('https://accounts.spotify.com/api/token', requestOptions);
+			if (requestResponse.ok) {
+				const data = await requestResponse.json();
+				try {
+					await mongo.db('spotify').collection('spotify-authorization').updateOne({}, {
+						$set: {
+							access_token: data.access_token,
+							access_token_expires_at: Date.now() + (data.expires_in * 1e3),
+							refresh_token: data.refresh_token
+						}
+					}, { upsert: true });
+					SPOTIFY_ACCESSTOKEN = data.access_token;
+					SPOTIFY_REFRESHTOKEN = data.refresh_token;
+					res.redirect('/');
+				} catch (error) {
+					console.error(`[${new Date().toISOString()}]: ${error.message}`);
+					throw new Error('Failed to save the access_token and refresh_token from Spotify Web API to MongoDB');
+				}
+			} else {
+				throw new Error('Failed to request the access_token and refresh_token from Spotify Web API');
+			}
+		} catch (error) {
+			console.error(`[${new Date().toISOString()}]: ${error.message}`);
+			res.sendStatus(500);
+		}
+	} else {
+		res.sendStatus(401);
+	}
 });
 
-async function refreshAccessToken() {
-    if (!globalRefreshToken) {
-        console.error('Refresh token is null, cannot refresh access token');
-        return;
-    }
-
-    console.log('Refreshing access token');
-
-    const authOptions = {
-        method: 'POST',
-        headers: {
-            'Authorization': 'Basic ' + (Buffer.from(SPOTIFY_CLIENT_ID + ':' + SPOTIFY_CLIENT_SECRET).toString('base64')),
-            'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: new URLSearchParams({
-            grant_type: 'refresh_token',
-            refresh_token: globalRefreshToken
-        })
-    };
-
-    try {
-        const response = await fetch('https://accounts.spotify.com/api/token', authOptions);
-
-        if (!response.ok) {
-            throw new Error('Failed to refresh access token: ' + response.statusText);
-        }
-
-        const body = await response.json();
-        globalAccessToken = body.access_token;
-        globalRefreshToken = body.refresh_token || globalRefreshToken;
-        await client.db('LFDEV').collection('spotify_info').updateOne({}, { $set: { timestamp: Date.now(), access_token: globalAccessToken, refresh_token: globalRefreshToken } }, { upsert: true });
-        console.log('Access token refreshed and updated in the database.');
-    } catch (err) {
-        console.error('Error during token refresh:', err);
-    }
-}
-
-const refreshInterval = 1 * 60 * 1000;  // 55 minutes in milliseconds
-setInterval(async () => {
-    const tokenInfo = await client.db('LFDEV').collection('spotify_info').findOne({}, { sort: { _timestamp: -1 } });
-    console.log((Date.now() - tokenInfo.timestamp), refreshInterval)
-    if ((Date.now() - tokenInfo.timestamp) > refreshInterval) {
-        refreshAccessToken(globalRefreshToken); // Ensure globalRefreshToken is correctly initialized and updated
-    };
-}, refreshInterval);
-
-setInterval(async () => {
-    await getCurrentPlayingTrack(globalAccessToken);
-}, interval);
+app.use('/robots.txt', (req, res) => {
+	res.type('text/plain');
+	res.send('User-agent: *\nDisallow: /');
+});
