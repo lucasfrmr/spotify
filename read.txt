@@ -172,3 +172,96 @@ CLIENT CODE
                   //-       p.image(img, 0, offsetY, 1000, 1000); // Apply the offset to the y-coordinate
                   //-   };
                   //- });
+
+
+
+
+                  ////////////////////////////////////////////////////////////latest semi working
+// async function roundRobinQueueSongs() {
+//     console.log('Running roundRobinQueueSongs()');
+//     let users = await db.collection('users').find({ roundedRobin: false }).toArray();
+
+//     if (users.length === 0) {
+//         await db.collection('users').updateMany({}, { $set: { roundedRobin: false } });
+//         console.log('All users roundedRobin reset to false.');
+//         users = await db.collection('users').find({ roundedRobin: false }).toArray();
+//     }
+
+//     for (const user of users) {
+//         let oldestUnplayedSong = user.queuedSongs.filter(song => !song.played)
+//                                                  .sort((a, b) => new Date(a.timestamp.$date) - new Date(b.timestamp.$date))[0];
+
+//         if (!oldestUnplayedSong) {
+//             console.log('No unplayed songs for user:', user.username);
+
+//             // Add songs from playlists if no unplayed songs are found
+//             const success = await addSongsFromPlaylistToQueue(user);
+//             if (success) {
+//                 oldestUnplayedSong = user.queuedSongs.filter(song => !song.played)
+//                                                      .sort((a, b) => new Date(a.timestamp.$date) - new Date(b.timestamp.$date))[0];
+//             } else {
+//                 console.log('No playlists found or no songs added from playlist for user:', user.username);
+//             }
+//         }
+
+//         if (oldestUnplayedSong) {
+//             console.log('Selected User:', user.username, 'Oldest Unplayed Song:', oldestUnplayedSong);
+
+//             const queueSuccess = await addSongToSpotifyQueue(oldestUnplayedSong, user);
+//             if (queueSuccess) {
+//                 await markSongAsPlayed(user.username, oldestUnplayedSong.trackUri);
+//                 user.roundedRobin = true;
+//                 await db.collection('users').updateOne({ _id: user._id }, { $set: user });
+//                 return { user, song: oldestUnplayedSong };
+//             }
+//         }
+//     }
+
+//     console.log('Processed all users. No unplayed songs left.');
+// }
+
+
+// async function getNextRoundRobinUserAndSong() {
+//     let users = await db.collection('users').find().sort({ roundedRobin: 1 }).toArray();
+
+//     for (const user of users) {
+//         let oldestUnplayedSong = user.queuedSongs.find(song => !song.played);
+
+//         if (oldestUnplayedSong) {
+//             await addSongToSpotifyQueue(oldestUnplayedSong, user);
+//             await markSongAsPlayed(user.username, oldestUnplayedSong.trackUri);
+
+//             // Update the user's roundedRobin property to the current timestamp
+//             await db.collection('users').updateOne({ _id: user._id }, { $set: { roundedRobin: new Date() } });
+
+//             console.log('Selected User:', user.username, 'Oldest Unplayed Song:', oldestUnplayedSong);
+//             return { user, song: oldestUnplayedSong };
+//         }
+//     }
+
+//     console.log('All users processed. No unplayed songs left.');
+//     return null;
+// }
+
+
+
+// async function roundRobinQueueSongs() {
+//     console.log('Running roundRobinQueueSongs()');
+
+//     let users = await db.collection('users').find().toArray();
+
+//     for (const user of users) {
+//         const unplayedSongs = user.queuedSongs.filter(song => !song.played);
+
+//         if (unplayedSongs.length > 0) {
+//             const oldestUnplayedSong = unplayedSongs[0]; // Get the oldest unplayed song
+//             console.log('User:', user.username, 'Oldest unplayed song to be queued:', oldestUnplayedSong.trackName);
+
+//             // Add the song to Spotify's queue and mark it as played
+//             await addSongToSpotifyQueue(oldestUnplayedSong, user);
+//             await markSongAsPlayed(user.username, oldestUnplayedSong.trackUri);
+
+//             break; // Exit after queuing one song
+//         }
+//     }
+// }

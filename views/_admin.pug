@@ -1,0 +1,16 @@
+//- pug admin page for managing users from this route
+
+extends layout
+
+block content
+    h1 Admin Page
+    table
+        thead
+            tr
+                th Name
+                th Songs added
+        tbody
+            each user in users
+                tr
+                    td= user.name
+                    td= user.email

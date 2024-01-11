@@ -1,0 +1,40 @@
+doctype html
+html(lang='en')
+  head
+    // Required meta tags
+    meta(charset='utf-8')
+    meta(name='viewport', content='width=device-width, initial-scale=1')
+
+    // Bootstrap CSS
+    link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css")
+
+    title Custom Spotify Queue
+
+  body
+    .container-fluid.pt-3
+      .row
+        // Current Song Section
+        .col-md-4
+          .card.mb-3
+            .card-header.bg-dark.text-white Current Song
+            .card-body
+              img(src='path_to_current_song_image', alt='Current Song')
+
+        // Current Queue Section
+        .col-md-4
+          .card.mb-3
+            .card-header.bg-primary.text-white Current Queue
+            ol.list-group.list-group-numbered
+              li.list-group-item 1. Song Title
+              // More list items for each song in the queue
+
+        // Personal Queue Section
+        .col-md-4
+          .card
+            .card-header.bg-warning.text-dark Personal Queue
+            ol.list-group.list-group-numbered
+              li.list-group-item 1. Personal Song Title
+              // More list items for each song in the personal queue
+
+    // Bootstrap Bundle with Popper
+    script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js")
