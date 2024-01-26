@@ -121,6 +121,15 @@ html(lang="en")
       .delete-svgIcon path {
         fill: white;
       }
+      h1.text-center {
+          animation: flashingText 2s linear infinite;
+      }
+
+      @keyframes flashingText {
+          0% { color: white; }
+          50% { color: red; }
+          100% { color: white; }
+      }
 
   body
     nav.navbar.navbar-expand-lg.navbar-dark
@@ -147,7 +156,7 @@ html(lang="en")
                 p#current-album-name #{recentTrack.albumName}
             input.playhead-slider#playhead(type="range" value="0" min="0" max="100")
             //- button.btn.btn-primary(type='button' id='testWebSocketButton') DO NOT PUSH THIS BUTTON!!!!!
-    h1.text-center Inbound
+    h1.text-center#activeText Online: #{appIsActive}
     ul.nav.nav-tabs(role='tablist')
       li.nav-item
         a.nav-link.active(href='#userQueue', data-bs-toggle='tab', role='tab', aria-controls='userQueue', aria-selected='true') User Queue
@@ -221,6 +230,8 @@ html(lang="en")
               li.page-item
                 a.page-link(href=`?page=${totalPages}`)= totalPages
       #queue.tab-pane.fade(role='tabpanel', aria-labelledby='queue-tab')
+        h3.text-spotify.mb-3 Queue
+          .first-song-in-queue
         .table-responsive#queueTableWrapper
           table.table.table-striped
             thead
@@ -279,10 +290,20 @@ html(lang="en")
 
               script.
                 $(document).ready(function() {
-
+                  //- console.log(user.username);
                   var ws;
                   var playheadInterval;
                   username = getCookie('username');
+                  csid = getCookie('connect.sid');
+                  if(username) {
+                    $('#displayUsername').html(`<h1>Welcome ${username}</h1>`);
+                    $('#usernameInputSection').hide();
+                    $('#searchInputSection').show();
+                    $('#searchTabLink').click();
+                  } else {
+                    $('#usernameInputSection').show();
+                    $('#searchInputSection').hide();
+                  }
 
 
                   $('.nav.nav-tabs .nav-link').on('click', function(e) {
@@ -343,7 +364,7 @@ html(lang="en")
                           //- ws.send(JSON.stringify({ action: 'get-queue' }));
                           break;
                         case 'queue-data':
-                          updateQueueTable(data.queueItems);
+                          updateQueueTable(data.queueItems, data.realQueue);
                           break;
                         case 'queue-update':
                           if (data.status === 'error' && data.message === 'This song has been played in the last 12 hours.') {
@@ -396,10 +417,12 @@ html(lang="en")
                     }
                   }
 
+
                   //evernt listener for the testWebSocketButton
                   $('#testWebSocketButton').on('click', function() {
                     if (ws && ws.readyState === WebSocket.OPEN) {
-                      ws.send(JSON.stringify({ action: 'queueOldestUnplayedSong' }));
+                      ws.send(JSON.stringify({ action: 'resetPlayedSongs' }));
+                      console.log('Sent resetPlayedSongs message');
                     }
                   });
 
@@ -411,6 +434,7 @@ html(lang="en")
                       }
                     }
                   });
+
 
                   function updateUserQueueTable(queueItems) {
                       var userQueueTableBody = $('#userQueueTableBody');
@@ -440,6 +464,8 @@ html(lang="en")
                           userQueueTableBody.append(noDataHtml);
                       }
                   }
+
+
 
                   //- function updateUserQueueTable(queueItems) {
                   //-     var userQueueTableBody = $('#userQueueTableBody');
@@ -530,9 +556,19 @@ html(lang="en")
                   }
 
                   // Queue
-                  function updateQueueTable(queueItems) {
+                  function updateQueueTable(queueItems, realQueue) {
+                      var firstQueue = $(`.first-song-in-queue`);
                       var queueTableBody = $('#queueTableBody');
                       queueTableBody.empty();
+                      console.log(realQueue[0].artists[0].name);
+                      if (realQueue.length > 0) {
+                        var firstSong = realQueue[0];
+                        var artistNames = firstSong.artists.map(artist => artist.name).join(', ');
+                        firstQueue.html(`<h2>Up next: </h2><p> ${artistNames} - ${firstSong.name}</p>`);
+                      } else {
+                        firstQueue.html(`<h2>No songs in queue.</h2>`);
+                      }
+
                       if (Array.isArray(queueItems)) {
                           queueItems.forEach(function(item, index) {
                               var rowHtml = `<tr>
@@ -586,10 +622,11 @@ html(lang="en")
                                   addToQueueButton.text('Too long.');
                               }
                               addToQueueButton.on('click', function() {
+                                var csid = getCookie('connect.sid');
                                   var confirmQueue = confirm('Are you sure you want to add this song to the queue?');
                                   if (confirmQueue) {
                                     console.log('username', username);
-                                      ws.send(JSON.stringify({ action: 'add-to-queue', trackUri: item.uri, username: username }));
+                                      ws.send(JSON.stringify({ action: 'add-to-queue', trackUri: item.uri, username: username, csid }));
                                   }
                               });
                               actionTd.append(addToQueueButton);
@@ -603,18 +640,21 @@ html(lang="en")
 
                   $('#searchButton').on('click', function() {
                     var username = document.cookie.replace(/(?:(?:^|.*;\s*)username\s*\=\s*([^;]*).*$)|^.*$/, "$1");
+                    var csid = getCookie('connect.sid');
                     var searchQuery = $('#searchInput').val().trim();
                     if (searchQuery.length > 0) {
-                      ws.send(JSON.stringify({ action: 'search', query: searchQuery, username: username }));
+                      ws.send(JSON.stringify({ action: 'search', query: searchQuery, username: username , csid:csid }));
                       $('#searchInput').val('');
                     }
                   });
 
                   $('#searchInput').on('keypress', function(event) {
+                    var username = document.cookie.replace(/(?:(?:^|.*;\s*)username\s*\=\s*([^;]*).*$)|^.*$/, "$1");
+                    var csid = getCookie('connect.sid');
                     if (event.which === 13) {
                       var searchQuery = $(this).val().trim();
                       if (searchQuery.length > 0) {
-                        ws.send(JSON.stringify({ action: 'search', query: searchQuery }));
+                        ws.send(JSON.stringify({ action: 'search', query: searchQuery, username: username , csid:csid }));
                         $(this).val('');
                       }
                     }
@@ -623,8 +663,10 @@ html(lang="en")
                   // Function to submit the search
                   function submitSearch() {
                     var searchQuery = $('#searchInput').val().trim();
+                    var username = document.cookie.replace(/(?:(?:^|.*;\s*)username\s*\=\s*([^;]*).*$)|^.*$/, "$1");
+                    var csid = getCookie('connect.sid');
                     if (searchQuery.length > 0) {
-                      ws.send(JSON.stringify({ action: 'search', query: searchQuery }));
+                      ws.send(JSON.stringify({ action: 'search', query: searchQuery, username: username , csid:csid }));
                       // Optionally, clear the search input after submission
                       // $('#searchInput').val('');
                     }
@@ -639,27 +681,23 @@ html(lang="en")
                   
                   $('#saveUsernameButton').on('click', function() {
                     const username = $('#usernameInput').val().trim();
+                    const csid = getCookie('connect.sid');
                     if (username) {
                       //- $(this).prop('disabled', true); 
-                      ws.send(JSON.stringify({ action: 'login', username: username }));
+                      ws.send(JSON.stringify({ action: 'login', username: username , csid: csid}));
                       //- location.reload();
                       // Do not set the cookie here
                     }
                   });
 
                   $('#usernameInput').on('keypress', function(event) {
+                    const csid = getCookie('connect.sid');
                     if (event.which === 13) {
                       const username = $(this).val().trim();
-                      // get connect.sid cookie
-                      const connectSid = getCookie('connect.sid');
-                      console.log('connectSid, ', connectSid);
-
-
                       if (username) {
                         //- $('#saveUsernameButton').prop('disabled', true); 
-                        ws.send(JSON.stringify({ action: 'login', username: username, connectSid: connectSid }));
+                        ws.send(JSON.stringify({ action: 'login', username: username , csid: csid}));
                         //- location.reload();
-                        // Do not set the cookie here
                       }
                     }
                   });
@@ -809,7 +847,7 @@ html(lang="en")
                   function queueSong(songUri) {
                       const username = getCookie('username');
                       if (ws && ws.readyState === WebSocket.OPEN) {
-                          ws.send(JSON.stringify({ action: 'add-to-queue', trackUri: songUri, username: username }));
+                          ws.send(JSON.stringify({ action: 'add-to-queue', trackUri: songUri, username: username , csid: csid}));
                       }
                   }
 
@@ -845,6 +883,8 @@ html(lang="en")
                     var text = $(this).text();
                     $('#searchInput').val(text);
                   });
+
+                  
 
                   checkUsernameAndToggleUI();
                   
