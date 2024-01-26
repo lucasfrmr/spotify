@@ -1,0 +1,103 @@
+doctype html
+html
+  head
+    title Request Access
+    meta(name='viewport', content='width=device-width, initial-scale=1, shrink-to-fit=no')
+    link(rel='stylesheet', href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css')
+    script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js")
+    style.
+      body {
+        background-color: black;
+        color: limegreen;
+        font-family: 'Courier New', monospace;
+      }
+      .form-container {
+        max-width: 400px;
+        margin: 50px auto;
+        padding: 20px;
+        background-color: #333;
+        border: 1px solid limegreen;
+      }
+      .form-control {
+        background-color: transparent;
+        border: 1px solid limegreen;
+        color: limegreen;
+      }
+      .btn-custom {
+        background-color: limegreen;
+        border: none;
+      }
+
+  body
+    .form-container
+      h2#requestAccessText.text-center Request Access
+      form#requestAccessForm(onsubmit="return validateForm()")
+        .mb-3
+          label(for="realName").form-label Real Name (Only visible to admins)
+          input(type="text", class="form-control", id="realName", placeholder="Enter your real name")
+        .mb-3
+          label(for="alias").form-label Alias (Visible to all users)
+          input(type="text", class="form-control", id="alias", placeholder="Choose an alias")
+        button(type="submit", class="btn btn-custom w-100") Submit Request
+    //- script(src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js")
+    script.
+      document.addEventListener('DOMContentLoaded', function() {
+        
+          const ws = new WebSocket('wss://spotify.lucasfarmer.com');
+          ws.onopen = function() {
+            console.log('WebSocket connection established');
+          };
+          ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            if (data.type === 'authentication' && data.status === 'success') {
+              // Redirect authenticated users
+              window.location.href = '/tracks';
+            }
+          };
+        //- const user = document.cookie.split(';').find(c => c.trim().startsWith('username=')).split('=')[1];
+        
+          document.getElementById('requestAccessForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const realname = document.getElementById('realName').value;
+            const alias = document.getElementById('alias').value;
+            const csid = document.cookie.split(';').find(c => c.trim().startsWith('connect.sid=')).split('=')[1];
+            
+            if (realname.trim() === '' || alias.trim() === '') {
+              alert('Please fill out all fields');
+              return;
+            }
+            
+            document.cookie = `username=${alias};path=/;max-age=50400`;
+            ws.send(JSON.stringify({ action: 'login', realname, alias, csid }));
+            window.location.href = '/';
+          });
+          const user = document.cookie.split(';').find(c => c.trim().startsWith('username=')).split('=')[1];
+          if (user) {
+            document.getElementById('requestAccessForm').style.display = 'none';
+            document.getElementById('requestAccessText').innerText = `Awaiting approval.`;
+            // add button to check access status that redirects to /tracks
+            const button = document.createElement('button');
+            button.classList.add('btn', 'btn-custom', 'w-100');
+            button.innerText = 'Check Access Status';
+            button.addEventListener('click', function() {
+              window.location.href = '/tracks';
+            });
+            document.getElementById('requestAccessText').appendChild(button);
+
+          }
+          function validateForm() {
+            const realname = document.getElementById('realName').value;
+            const alias = document.getElementById('alias').value;
+            if (realname === '' || alias === '') {
+              alert('Please fill out all fields');
+              return false;
+            }
+            return true;
+          }
+        });
+          
+
+      // if user has username cookie, redirect to /tracks
+      //- if (document.cookie.split(';').find(c => c.trim().startsWith('username='))) {
+      //-   window.location.href = '/';
+      //- }
