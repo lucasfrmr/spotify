@@ -3,10 +3,13 @@ html(lang="en")
   head
     title Spotify App
     meta(charset='UTF-8')
+    favicon(href='/images/favicon.ico' type='image/png')
+    link(rel='shortcut icon' type='image/gif' href='/images/favicon.ico')
     meta(name='viewport' content='width=device-width, initial-scale=1, shrink-to-fit=no')
     link(rel='stylesheet' href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css')
     script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js")
     script(src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js")
+    script(src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js")
     style.
       :root {
         --bs-dark: #121212;
@@ -22,6 +25,7 @@ html(lang="en")
         background-color: var(--bs-dark);
         color: var(--bs-light-gray);
         font-size: var(--bs-font-size-base);
+        overflow-x: hidden;
       }
       .navbar, .navbar-brand, .nav-link {
         background-color: var(--bs-gray-dark);
@@ -67,7 +71,8 @@ html(lang="en")
         cursor: pointer;
       }
       .current-track {
-        background-color: var(--bs-gray-dark);
+        possition: absolute;
+        //- background-color: var(--bs-gray-dark);
         padding: 1rem;
         border-radius: .25rem;
         margin-bottom: 1rem;
@@ -93,42 +98,101 @@ html(lang="en")
           background-color: #1DB954;
           border-color: #1DB954;
       }
+      #p5-sketch-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%; /* Adjust height as necessary */
+        z-index: -1; /* Ensure it's behind the content */
+      }
+      .banner-background {
+        background-image: url('images/smwyg.png');
+        margin-top: 100;
+        background-position: center;
+        background-repeat: no-repeat;
+        min-height: 100px; /* adjust based on your design */
+      }
+      .delete-svgIcon {
+        width: 15px;
+        transition-duration: 0.3s;
+      }
+
+      .delete-svgIcon path {
+        fill: white;
+      }
+      h1.text-center {
+          animation: flashingText 2s linear infinite;
+      }
+
+      @keyframes flashingText {
+          0% { color: white; }
+          50% { color: red; }
+          100% { color: white; }
+      }
+
   body
     nav.navbar.navbar-expand-lg.navbar-dark
       .container-fluid
         a.navbar-brand(href='#')
           img(src='https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/768px-Spotify_logo_without_text.svg.png' alt='Spotify Logo' width='20' height='20' class='d-inline-block align-text-top')
-        button.navbar-toggler(type='button' data-bs-toggle='collapse' data-bs-target='#navbarNavDropdown' aria-controls='navbarNavDropdown' aria-expanded='false' aria-label='Toggle navigation')
-          span.navbar-toggler-icon
+          //- button.navbar-toggler(type='button' data-bs-toggle='collapse' data-bs-target='#navbarNavDropdown' aria-controls='navbarNavDropdown' aria-expanded='false' aria-label='Toggle navigation')
+        span(style='float: right;') Version - 0.1.0a
+        //-   span.navbar-toggler-icon
     .container-fluid
-      if recentTrack
-        .current-track
-          img(src=recentTrack.artistImageUrl alt="Artist Image" width="100" height="100" id="artist-image-element-id")
-          .track-info
-            if recentTrack.artistName
-              p#current-artist-name 
-                a(href=`https://open.spotify.com/artist/${recentTrack.artistId}` target='_blank') #{recentTrack.artistName}
-            if recentTrack.trackName
-              h5#current-track-name
-                a(href=`https://open.spotify.com/track/${recentTrack.trackId}` target='_blank') #{recentTrack.trackName}
-            if recentTrack.albumName
-              p#current-album-name #{recentTrack.albumName}
-          input.playhead-slider#playhead(type="range" value="0" min="0" max="100")
+      .banner-background
+        //- #p5-sketch-container
+        if recentTrack
+          .current-track
+            img(src=recentTrack.artistImageUrl alt="Artist Image" width="100" height="100" id="artist-image-element-id")
+            .track-info
+              if recentTrack.artistName
+                p#current-artist-name 
+                  a(href=`https://open.spotify.com/artist/${recentTrack.artistId}` target='_blank') #{recentTrack.artistName}
+              if recentTrack.trackName
+                h5#current-track-name
+                  a(href=`https://open.spotify.com/track/${recentTrack.trackId}` target='_blank') #{recentTrack.trackName}
+              if recentTrack.albumName
+                p#current-album-name #{recentTrack.albumName}
+            input.playhead-slider#playhead(type="range" value="0" min="0" max="100")
+            //- button.btn.btn-primary(type='button' id='testWebSocketButton') DO NOT PUSH THIS BUTTON!!!!!
+    h1.text-center#activeText Online: #{appIsActive}
     ul.nav.nav-tabs(role='tablist')
+      li.nav-item
+        a.nav-link.active(href='#userQueue', data-bs-toggle='tab', role='tab', aria-controls='userQueue', aria-selected='true') User Queue
       li.nav-item
         a.nav-link(href='#history', data-bs-toggle='tab', role='tab', aria-controls='history', aria-selected='false') History
       li.nav-item
         a.nav-link(href='#queue', data-bs-toggle='tab', role='tab', aria-controls='queue', aria-selected='false') Queue
       // tab for searching
       li.nav-item
-        a.nav-link.active(href='#search', data-bs-toggle='tab', role='tab', aria-controls='search', aria-selected='ttrue') Search
+        a.nav-link(href='#search', data-bs-toggle='tab', role='tab', aria-controls='search', aria-selected='false', id='searchTabLink') Search
       // nav-item for playlist tab for taking a playlist link and the server will proccess it and return the tracks
-      li.nav-item
-        a.nav-link(href='#playlist', data-bs-toggle='tab', role='tab', aria-controls='playlist', aria-selected='false') Playlist
-      li.nav-item
-        a.nav-link(href='#playlists', data-bs-toggle='tab', role='tab', aria-controls='playlists', aria-selected='false') Uploaded
-
+      //- li.nav-item
+      //-   a.nav-link(href='#playlist', data-bs-toggle='tab', role='tab', aria-controls='playlist', aria-selected='false') Playlist
+      //- li.nav-item
+      //-   a.nav-link(href='#playlists', data-bs-toggle='tab', role='tab', aria-controls='playlists', aria-selected='false') Uploaded
     .tab-content
+      #userQueue.tab-pane.fade.show.active(role='tabpanel', aria-labelledby='userQueue-tab')
+        #displayUsername(style='display: none;')
+        #usernameInputSection
+          h1.text-spotify.mb-3 Who are you?
+          .input-group.mb-3
+            input.form-control(type='text', id='usernameInput', placeholder='Please identify yourself?', aria-label='Username')
+            button.btn.btn-success(type='button', id='saveUsernameButton') Enter Name
+        #userQueueSection.tab-pane.fade(role='tabpanel', aria-labelledby='userQueue-tab')
+          h1.text-spotify.mb-3 User
+        .table-responsive#userQueueTableWrapper
+          table.table.table-striped
+            thead
+              tr
+                th Queue Order
+                th Track Name
+                th Artist Name
+                th Added Time
+                th Played
+                th Delete
+            tbody#userQueueTableBody
       #history.tab-pane.fade(role='tabpanel', aria-labelledby='history-tab')
         h1.text-spotify.mb-3
         .table-responsive
@@ -138,6 +202,8 @@ html(lang="en")
                 th(style='width: 10%') Timestamp
                 th(style='width: 45%') Track Name
                 th(style='width: 45%') Artist Name
+                th(style='width: 45%') Username
+                
             tbody
               each track in tracks
                 tr
@@ -147,6 +213,8 @@ html(lang="en")
                   td
                     img(src=track.artistImageUrl alt="Artist" style="width: 30px; height: 30px; border-radius: 50%; margin-right: 5px;")
                     a(href=`https://open.spotify.com/artist/${track.artistId}` target='_blank')= track.artistName
+                  td 
+                    p= track.queuedBy
         nav.aria-label='Page navigation'
           ul.pagination.pagination-sm.justify-content-center.my-4
             - let totalPages = Math.ceil(totalTracks / pageSize);
@@ -166,24 +234,19 @@ html(lang="en")
               li.page-item
                 a.page-link(href=`?page=${totalPages}`)= totalPages
       #queue.tab-pane.fade(role='tabpanel', aria-labelledby='queue-tab')
-        h1.text-spotify.mb-3 Queue
+        h3.text-spotify.mb-3 Queue
+          .first-song-in-queue
         .table-responsive#queueTableWrapper
           table.table.table-striped
             thead
               tr
                 th Queue Number
+                th Queued By
                 th Track Name
                 th Artist Name
                 th Track Length
-                th Artist Image
             tbody#queueTableBody
-      #search.tab-pane.fade.show.active(role='tabpanel', aria-labelledby='search-tab')
-        #displayUsername(style='display: none;')
-        #usernameInputSection
-          h1.text-spotify.mb-3 Enter Your Name
-          .input-group.mb-3
-            input.form-control(type='text', id='usernameInput', placeholder='Enter your username', aria-label='Username')
-            button.btn.btn-success(type='button', id='saveUsernameButton') Enter Name
+      #search.tab-pane.fade(role='tabpanel', aria-labelledby='search-tab')
         #searchInputSection(style='display: none;')
           h1.text-spotify.mb-3 Search
           .input-group.mb-3
@@ -195,6 +258,7 @@ html(lang="en")
               tr
                 th Song
                 th Artist
+                th Duration
                 th Action
             tbody#searchResultsTable
               // Search results will be appended here
@@ -206,12 +270,11 @@ html(lang="en")
           input.form-control.mb-2(type='text', id='playlistInput', placeholder='Enter playlist URL', aria-label='Playlist URL')
           button.btn.btn-success(type='button', id='playlistButton') Upload Playlist
         .additional-inputs.d-none
-          input.form-control.mb-2(type='text', id='userNameInput', placeholder='Enter your name', aria-label='User Name')
-          input.form-control.mb-2(type='text', id='playlistNameInput', placeholder='Enter playlist name', aria-label='Playlist Name')
           div.d-flex.align-items-center
             button.btn.btn-primary.mr-2(type='button', id='submitPlaylistButton', disabled) Submit Playlist
             button.btn.btn-secondary(type='button', id='resetPlaylistForm') Reset
         .playlist-info.mb-3.d-none
+          h3#playlistName.text-spotify.mb-2  
           p#totalCount Total Songs: 0
           p#explicitCount.text-danger Total Explicit Songs: 0
           p#nonExplicitCount.text-success Songs to be added: 0
@@ -229,394 +292,760 @@ html(lang="en")
         h1.text-spotify.mb-3 Playlists
               // Content for playlists will be appended here
 
-              script.
-                $(document).ready(function() {
-                  var ws;
-                  var playheadInterval;
+  script.
+    $(document).ready(function() {
+      //- console.log(user.username);
+      var ws;
+      var playheadInterval;
+      username = getCookie('username');
+      csid = getCookie('connect.sid');
+      if(username) {
+        $('#displayUsername').html(`<h1>Welcome ${username}</h1>`);
+        $('#usernameInputSection').hide();
+        $('#searchInputSection').show();
+        $('#searchTabLink').click();
+      } else {
+        $('#usernameInputSection').show();
+        $('#searchInputSection').hide();
+      }
 
-                  $('.nav.nav-tabs .nav-link').on('click', function(e) {
-                    e.preventDefault();
-                    var tabTarget = $(this).attr('href');
 
-                    if (tabTarget === '#queue' && ws && ws.readyState === WebSocket.OPEN) {
-                      ws.send(JSON.stringify({ action: 'get-queue' }));
-                    }
+      $('.nav.nav-tabs .nav-link').on('click', function(e) {
+        e.preventDefault();
+        var tabTarget = $(this).attr('href');
 
-                    $('.nav.nav-tabs .nav-link.active').removeClass('active');
-                    $('.tab-content .tab-pane.active').removeClass('show active');
+        if (tabTarget === '#queue' && ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ action: 'get-queue' }));
+        }
 
-                    $(this).addClass('active');
-                    $(tabTarget).addClass('show active');
+        $('.nav.nav-tabs .nav-link.active').removeClass('active');
+        $('.tab-content .tab-pane.active').removeClass('show active');
+
+        $(this).addClass('active');
+        $(tabTarget).addClass('show active');
+      });
+
+      function startWebSocket() {
+        ws = new WebSocket('wss://spotify.lucasfarmer.com');
+        ws.onopen = function() {
+          console.log('WebSocket connection established');
+          setInterval(function() {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ action: 'ping' }));
+              console.log('Sent ping message');
+            }
+          }, 30000);
+        };
+
+        ws.onerror = function(error) {
+          console.error('WebSocket error:', error);
+        };
+
+        ws.onclose = function() {
+          console.log('WebSocket connection closed. Attempting to reconnect...');
+          setTimeout(startWebSocket, 3000);
+        };
+
+        ws.onmessage = (event) => {
+          var data = JSON.parse(event.data);
+          if (data.action === 'pong') {
+            console.log('Received pong message');
+            return;
+          }
+          switch(data.type) {
+            case 'user-queue':
+              updateUserQueueTable(data.queueItems);
+              console.log('user-queue', data.queueItems);
+              break;
+            case 'search-results':
+              displaySearchResults(data.results);
+              //- console.log('search-results', data.results);
+              break;
+            case 'track-change':
+              updateCurrentTrack(data.track);
+              updateTrackTable(data.track);
+              updatePlayhead(data.progress_ms, data.track.trackDuration);
+              
+              ws.send(JSON.stringify({ action: 'get-queue' }));
+              break;
+            case 'queue-data':
+              console.log('queue-data', data.queueItems);
+              updateQueueTable(data.queueItems);
+              break;
+            case 'queue-update':
+              if (data.status === 'error' && data.message === 'This song has been played in the last 12 hours.') {
+                  alert(`This song has been played recently and will be available again at ${data.availableAt}`);
+              } else {
+                  // Handle other queue-update messages
+              }
+              break;
+            case 'queue-error':
+              console.log('Queue error:', data.message);
+              alert(data.message);
+              break;
+            case 'playlist-data':
+              displayPlaylistTracks(data.playlistItems);
+              break;
+            //- case 'playlists':
+            //-   displayPlaylists(data.playlists);
+            //-   break;
+            case 'user-created':
+              // Set the cookie only if the user is successfully created
+              console.log('User created:', data.username);
+              document.cookie = `username=${data.username};path=/;max-age=50400`; // Expires in 14 hours
+              checkUsernameAndToggleUI();
+              // reload the page
+              location.reload();
+              break;
+            case 'user-creation-error':
+              // Handle user creation error (e.g., username already exists)
+              alert('Error creating user: ' + data.message);
+              break;
+            case 'login-error':
+              console.log('Login error:', data.message);
+              // set the username cookie with the username
+              document.cookie = `username=${data.username};path=/;max-age=50400`; // Expires in 14 hours
+              location.reload();
+              break;
+
+            default:
+              console.log('Unknown message type:', data.type);
+          }
+        };
+      }
+      function loadUserQueue() {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          const username = getCookie('username');
+          if (username) {
+            ws.send(JSON.stringify({ action: 'get-user-queue', username: username }));
+          }
+        }
+      }
+
+
+      //evernt listener for the testWebSocketButton
+      $('#testWebSocketButton').on('click', function() {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ action: 'resetPlayedSongs' }));
+          console.log('Sent resetPlayedSongs message');
+        }
+      });
+
+      $('a[href="#userQueue"]').on('click', function() {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          const username = getCookie('username');
+          if (username) {
+            ws.send(JSON.stringify({ action: 'get-user-queue', username: username }));
+          }
+        }
+      });
+
+
+      function updateUserQueueTable(queueItems) {
+          var userQueueTableBody = $('#userQueueTableBody');
+          userQueueTableBody.empty(); // Clear existing entries
+
+          if (Array.isArray(queueItems) && queueItems.length > 0) {
+              queueItems.forEach(function(song, index) {
+                  var playedStatus = song.played ? 'Played' : 'Not Played';
+                  var rowHtml = `<tr>
+                                  <td>${index + 1}</td>
+                                  <td>${song.trackName}</td>
+                                  <td>${song.artistName}</td>
+                                  <td>${new Date(song.timestamp).toLocaleString('en-US')}</td>
+                                  <td>${playedStatus}</td>
+                                  <td>
+                                      <button class="delete-button btn btn-sm btn-danger" onclick="removeFromQueue('${song.trackUri}')">
+                                        <svg class="delete-svgIcon" viewBox="0 0 448 512">
+                                                          <path d="M135.2 17.7L128 32H32C14.3 32 0 46.3 0 64S14.3 96 32 96H416c17.7 0 32-14.3 32-32s-14.3-32-32-32H320l-7.2-14.3C307.4 6.8 296.3 0 284.2 0H163.8c-12.1 0-23.2 6.8-28.6 17.7zM416 128H32L53.2 467c1.6 25.3 22.6 45 47.9 45H346.9c25.3 0 46.3-19.7 47.9-45L416 128z"></path>
+                                                        </svg>
+                                      </button>
+                                  </td>
+                                </tr>`;
+                  userQueueTableBody.append(rowHtml);
+              });
+          } else {
+              var noDataHtml = `<tr><td colspan="6">No songs in queue.</td></tr>`;
+              userQueueTableBody.append(noDataHtml);
+          }
+      }
+
+
+
+      //- function updateUserQueueTable(queueItems) {
+      //-     var userQueueTableBody = $('#userQueueTableBody');
+      //-     userQueueTableBody.empty(); // Clear existing entries
+
+      //-     if (Array.isArray(queueItems) && queueItems.length > 0) {
+      //-         queueItems.forEach(function(song, index) {
+      //-             var playedStatus = song.played ? 'Played' : 'Not Played';
+      //-             var rowHtml = `<tr>
+      //-                             <td>${index + 1}</td>
+      //-                             <td>${song.trackName}</td>
+      //-                             <td>${song.artistName}</td>
+      //-                             <td>${new Date(song.timestamp).toLocaleString('en-US')}</td>
+      //-                             <td>${playedStatus}</td>
+      //-                             <td><button class="btn btn-sm btn-danger" onclick="removeFromQueue('${song.trackUri}')"></button></td>
+      //-                         </tr>`;
+      //-             userQueueTableBody.append(rowHtml);
+      //-         });
+      //-     } else {
+      //-         var noDataHtml = `<tr><td colspan="5">No songs in queue.</td></tr>`;
+      //-         userQueueTableBody.append(noDataHtml);
+      //-     }
+      //- }
+
+      window.removeFromQueue = function(trackUri) {
+          var username = document.cookie.replace(/(?:(?:^|.*;\s*)username\s*\=\s*([^;]*).*$)|^.*$/, "$1");
+          if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ action: 'remove-from-queue', username: username, trackUri: trackUri }));
+          }
+          // refresh the queue
+          // simulate a click on the user queue tab
+          setTimeout(function() {
+            $('a[href="#userQueue"]').click();
+          }, 500);
+          //- ws.send(JSON.stringify({ action: 'get-user-queue', username: username }));
+          // reload the page
+          //- updateUserQueueTable(queueItems);
+          //- location.reload();
+      }
+
+
+      // Current Track
+      function updateCurrentTrack(track) {
+        var artistNameElement = $('#current-artist-name');
+        var trackNameElement = $('#current-track-name');
+        var albumNameElement = $('#current-album-name');
+        var artistImageElement = $('#artist-image-element-id');
+        var playheadElement = $('#playhead');
+        if (artistNameElement.length) artistNameElement.html(`<a href="https://open.spotify.com/artist/${track.artistId}" target="_blank">${track.artistName}</a>`);
+        if (trackNameElement.length) trackNameElement.html(`<a href="https://open.spotify.com/track/${track.trackId}" target="_blank">${track.trackName}</a>`);
+        if (albumNameElement.length) albumNameElement.text(track.albumName);
+        if (artistImageElement.length) artistImageElement.attr('src', track.artistImageUrl);
+        if (playheadElement.length) playheadElement.val(0);
+      }
+
+      function updateTrackTable(track) {
+        var newRowHtml = `<tr>
+                            <td class="timestamp">${new Date().toLocaleString('en-US', { timeZone: 'CST6CDT' })}</td>
+                            <td><a href="https://open.spotify.com/track/${track.trackId}" target="_blank">${track.trackName}</a></td>
+                            <td><img src="${track.artistImageUrl}" alt="${track.artistName}" style="width: 30px; height: 30px; border-radius: 50%; margin-right: 5px;">
+                                <a href="https://open.spotify.com/artist/${track.artistId}" target="_blank">${track.artistName}</a>
+                            </td>
+                            <td>${track.queuedBy}</td>
+                          </tr>`;
+        $('#historyTableBody').prepend(newRowHtml);
+      console.log('track', track);
+      }
+
+      function updatePlayhead(progress_ms, trackDuration) {
+        const playheadSlider = document.getElementById('playhead');
+        if (!playheadSlider) return;
+
+        clearInterval(playheadInterval);
+
+        playheadInterval = setInterval(() => {
+          const playheadPercentage = (progress_ms / trackDuration) * 100;
+          playheadSlider.value = playheadPercentage;
+          progress_ms += 1000;
+          if (progress_ms > trackDuration) {
+            clearInterval(playheadInterval);
+          }
+        }, 1000);
+      }
+
+      function formatTrackDuration(durationMs) {
+          var minutes = Math.floor(durationMs / 60000);
+          var seconds = ((durationMs % 60000) / 1000).toFixed(0);
+          return minutes + ":" + (seconds < 10 ? '0' : '') + seconds;
+      }
+
+      // Queue
+      //- function updateQueueTable(queueItems, realQueue) {
+      //-     var firstQueue = $(`.first-song-in-queue`);
+      //-     var queueTableBody = $('#queueTableBody');
+      //-     queueTableBody.empty();
+      //-     console.log(realQueue[0].artists[0].name);
+      //-     if (realQueue.length > 0) {
+      //-       var firstSong = realQueue[0];
+      //-       var artistNames = firstSong.artists.map(artist => artist.name).join(', ');
+      //-       firstQueue.html(`<h2>Up next: </h2><p> ${artistNames} - ${firstSong.name}</p>`);
+      //-     } else {
+      //-       firstQueue.html(`<h2>No songs in queue.</h2>`);
+      //-     }
+
+      //-     if (Array.isArray(queueItems)) {
+      //-         queueItems.forEach(function(item, index) {
+      //-             var rowHtml = `<tr>
+      //-                               <td>${index + 1}</td>
+      //-                               <td>${item.username}</td>
+      //-                               <td>${item.song.trackName}</td>
+      //-                               <td>${item.song.artistName}</td>
+      //-                                 <a href="${item.song.trackUri}" target="_blank">Open in Spotify</a>
+      //-                               <td>${formatTrackDuration(item.song.duration_ms)}</td>
+      //-                           </tr>`;
+      //-             queueTableBody.append(rowHtml);
+      //-         });
+      //-     } else {
+      //-         console.error('Queue data is not an array');
+      //-     }
+      //- }
+
+      function updateQueueTable(queueItems) {
+          var firstQueue = $(`.first-song-in-queue`);
+          var queueTableBody = $('#queueTableBody');
+          queueTableBody.empty();
+
+          // Check if realQueue is not empty and not undefined before accessing it
+          //- if (realQueue && realQueue.length > 0) {
+          //-     //- console.log(realQueue[0].artists[0].name); // Log the artist name only if realQueue is not empty
+          //-     var firstSong = realQueue[0];
+          //-     var artistNames = firstSong.artists.map(artist => artist.name).join(', ');
+          //-     firstQueue.html(`<h2>Up next: </h2><p> ${artistNames} - ${firstSong.name}</p>`);
+          //- } else {
+              //- firstQueue.html(`<h2>No songs in queue.</h2>`);
+          //- }
+
+          // Display the rest of the queue data
+          if (Array.isArray(queueItems)) {
+              queueItems.forEach(function(item, index) {
+                  var rowHtml = `<tr>
+                                      <td>${index + 1}</td>
+                                      <td>${item.username}</td>
+                                      <td>${item.song.trackName}</td>
+                                      <td>${item.song.artistName}</td>
+                                        <a href="${item.song.trackUri}" target="_blank">Open in Spotify</a>
+                                      <td>${formatTrackDuration(item.song.duration_ms)}</td>
+                                  </tr>`;
+                  queueTableBody.append(rowHtml);
+              });
+          } else {
+              console.error('Queue data is not an array');
+          }
+      }
+
+      //- function displaySearchResults(results) {
+      //-     console.log('results', results);
+      //-     var resultsTable = $('#searchResultsTable');
+      //-     resultsTable.empty();
+
+      //-     results.forEach(function(item) {
+      //-         var albumImage = $('<img>').attr('src', item.album.images[1].url).css({width: '30px', height: '30px', borderRadius: '50%', marginRight: '5px'});
+
+      //-         // Song title with data-type
+      //-         var songTitleSpan = $('<span>').addClass('clickable-text').attr('data-type', 'track').text(item.name);
+
+      //-         // Album name with data-type
+      //-         var albumTitleSmall = $('<small>').css({display: 'block'});
+      //-         var albumLink = $('<span>').addClass('clickable-text').css({color: 'white', cursor: 'pointer'}).attr('data-type', 'album').text(item.album.name).on('click', function() {
+      //-             submitSearch(item.album.name, 'album'); // Pass the type here
+      //-         });
+      //-         albumTitleSmall.append(albumLink);
+
+      //-         var songName = $('<td>').append(albumImage).append(songTitleSpan).append(albumTitleSmall);
+
+      //-         // Artist name with data-type
+      //-         var artistName = $('<td>').append($('<span>').addClass('clickable-text').attr('data-type', 'artist').text(item.artists[0].name));
+      //-         var duration = $('<td>').text(formatTrackDuration(item.duration_ms));
+      //-         var actionTd = $('<td>');
+
+      //-         var isNickelback = item.artists.some(artist => artist.name.toLowerCase() === 'nickelback');
+      //-         if (isNickelback || item.explicit) {
+      //-             var explicitLabel = $('<span>').addClass('badge bg-danger').text('Explicit');
+      //-             actionTd.append(explicitLabel);
+      //-         } else {
+      //-             var addToQueueButton = $('<button>').addClass('btn btn-sm btn-success').text('Add to Queue');
+      //-             if (item.duration_ms > 480000) {
+      //-                 addToQueueButton.prop('disabled', true);
+      //-                 addToQueueButton.text('Too long.');
+      //-             }
+      //-             addToQueueButton.on('click', function() {
+      //-               var csid = getCookie('connect.sid');
+      //-                 var confirmQueue = confirm('Are you sure you want to add this song to the queue?');
+      //-                 if (confirmQueue) {
+      //-                   ws.send(JSON.stringify({ action: 'add-to-queue', trackUri: item.uri, username: username, csid }));
+      //-                 }
+      //-             });
+      //-             actionTd.append(addToQueueButton);
+      //-         }
+
+      //-         var tr = $('<tr>').append(songName, artistName, duration, actionTd);
+      //-         resultsTable.append(tr);
+      //-     });
+      //- }
+
+      function displaySearchResults(results) {
+          
+          var resultsTable = $('#searchResultsTable');
+          resultsTable.empty();
+
+          results.forEach(function(item) {
+              var albumImage = $('<img>').attr('src', item.album.images[1].url).css({width: '30px', height: '30px', borderRadius: '50%', marginRight: '5px'});
+              
+              // Create a span for the song name
+              var songTitleSpan = $('<span>').addClass('clickable-text').text(item.name);
+
+              // Create a clickable and styled small text element for the album name
+              var albumTitleSmall = $('<small>').css({display: 'block'});
+              var albumLink = $('<span>').addClass('clickable-text').css({color: 'white' /* or '#fff' for white */, cursor: 'pointer'}).text(item.album.name).on('click', function() {
+                  submitSearch(item.album.name);
+              });
+              albumTitleSmall.append(albumLink);
+
+              // Append both the song title and album title to the songName variable
+              var songName = $('<td>').append(albumImage).append(songTitleSpan).append(albumTitleSmall);
+
+              var artistName = $('<td>').append($('<span>').addClass('clickable-text').text(item.artists[0].name));
+              var duration = $('<td>').text(formatTrackDuration(item.duration_ms));
+              var actionTd = $('<td>');
+
+              var isNickelback = item.artists.some(artist => artist.name.toLowerCase() === 'nickelback');
+              if (isNickelback || item.explicit) {
+                  var explicitLabel = $('<span>').addClass('badge bg-danger').text('Explicit');
+                  actionTd.append(explicitLabel);
+              } else {
+                  var addToQueueButton = $('<button>').addClass('btn btn-sm btn-success').text('Add to Queue');
+                  if (item.duration_ms > 480000) {
+                      addToQueueButton.prop('disabled', true);
+                      addToQueueButton.text('Too long.');
+                  }
+                  addToQueueButton.on('click', function() {
+                    var csid = getCookie('connect.sid');
+                      var confirmQueue = confirm('Are you sure you want to add this song to the queue?');
+                      if (confirmQueue) {
+                        ws.send(JSON.stringify({ action: 'add-to-queue', trackUri: item.uri, username: username, csid }));
+                      }
                   });
+                  actionTd.append(addToQueueButton);
+              }
 
-                  function startWebSocket() {
-                    ws = new WebSocket('wss://spotify.lucasfarmer.com');
-                    ws.onopen = function() {
-                      console.log('WebSocket connection established');
-                      setInterval(function() {
-                        if (ws.readyState === WebSocket.OPEN) {
-                          ws.send(JSON.stringify({ action: 'ping' }));
-                        }
-                      }, 30000);
-                    };
-
-                    ws.onerror = function(error) {
-                      console.error('WebSocket error:', error);
-                    };
-
-                    ws.onclose = function() {
-                      console.log('WebSocket connection closed. Attempting to reconnect...');
-                      setTimeout(startWebSocket, 3000);
-                    };
-
-                    ws.onmessage = function(event) {
-                      var data = JSON.parse(event.data);
-                      if (data.action === 'pong') {
-                        console.log('Received pong message');
-                        return;
-                      }
-                      switch(data.type) {
-                        case 'search-results':
-                          displaySearchResults(data.results);
-                          break;
-                        case 'track-change':
-                          updateCurrentTrack(data.track);
-                          updateTrackTable(data.track);
-                          updatePlayhead(data.progress_ms, data.track.trackDuration);
-                          ws.send(JSON.stringify({ action: 'get-queue' }));
-                          break;
-                        case 'queue-data':
-                          updateQueueTable(data.queueItems);
-                          break;
-                        case 'queue-update':
-                          if (data.status === 'error' && data.message === 'This song has been played in the last 12 hours.') {
-                              alert(`This song has been played recently and will be available again at ${data.availableAt}`);
-                          } else {
-                              // Handle other queue-update messages
-                          }
-                          break;
-                        case 'queue-error':
-                          alert(data.message);  // or use a more sophisticated method to display the error
-                          break;
-                        case 'playlist-data':
-                          displayPlaylistTracks(data.playlistItems);
-                          break;
-                        case 'playlist-data':
-                          displayPlaylists(data.playlists);
-                          break;
-                        default:
-                          console.log('Unknown message type:', data.type);
-                      }
-                    };
-                  }
-
-                  // Current Track
-                  function updateCurrentTrack(track) {
-                    var artistNameElement = $('#current-artist-name');
-                    var trackNameElement = $('#current-track-name');
-                    var albumNameElement = $('#current-album-name');
-                    var artistImageElement = $('#artist-image-element-id');
-                    var playheadElement = $('#playhead');
-                    if (artistNameElement.length) artistNameElement.html(`<a href="https://open.spotify.com/artist/${track.artistId}" target="_blank">${track.artistName}</a>`);
-                    if (trackNameElement.length) trackNameElement.html(`<a href="https://open.spotify.com/track/${track.trackId}" target="_blank">${track.trackName}</a>`);
-                    if (albumNameElement.length) albumNameElement.text(track.albumName);
-                    if (artistImageElement.length) artistImageElement.attr('src', track.artistImageUrl);
-                    if (playheadElement.length) playheadElement.val(0);
-                  }
-
-                  function updateTrackTable(track) {
-                    var newRowHtml = `<tr>
-                                        <td class="timestamp">${new Date().toLocaleString('en-US', { timeZone: 'CST6CDT' })}</td>
-                                        <td><a href="https://open.spotify.com/track/${track.trackId}" target="_blank">${track.trackName}</a></td>
-                                        <td><img src="${track.artistImageUrl}" alt="${track.artistName}" style="width: 30px; height: 30px; border-radius: 50%; margin-right: 5px;">
-                                            <a href="https://open.spotify.com/artist/${track.artistId}" target="_blank">${track.artistName}</a>
-                                        </td>
-                                      </tr>`;
-                    $('#historyTableBody').prepend(newRowHtml);
-                  console.log('track', track);
-                  }
-
-                  function updatePlayhead(progress_ms, trackDuration) {
-                    const playheadSlider = document.getElementById('playhead');
-                    if (!playheadSlider) return;
-
-                    clearInterval(playheadInterval);
-
-                    playheadInterval = setInterval(() => {
-                      const playheadPercentage = (progress_ms / trackDuration) * 100;
-                      playheadSlider.value = playheadPercentage;
-                      progress_ms += 1000;
-                      if (progress_ms > trackDuration) {
-                        clearInterval(playheadInterval);
-                      }
-                    }, 1000);
-                  }
-
-                  function formatTrackDuration(durationMs) {
-                      var minutes = Math.floor(durationMs / 60000);
-                      var seconds = ((durationMs % 60000) / 1000).toFixed(0);
-                      return minutes + ":" + (seconds < 10 ? '0' : '') + seconds;
-                  }
-
-                  // Queue
-                  function updateQueueTable(queueItems) {
-                    var queueTableBody = $('#queueTableBody');
-                    queueTableBody.empty();
-                    if (Array.isArray(queueItems.queue)) {
-                      queueItems.queue.forEach(function(track, index) {
-                        var rowHtml = `<tr>
-                                        <td>${index + 1}</td>
-                                        <td>${track.name}</td>
-                                        <td>${track.artists.map(artist => artist.name).join(", ")}</td>
-                                        <td>${formatTrackDuration(track.duration_ms)}</td>
-                                        <td>${track.album && track.album.images && track.album.images.length ? `<img src="${track.album.images[0].url}" alt="${track.album.name}" style='height: 50px;'>` : ''}</td>
-                                      </tr>`;
-                        queueTableBody.append(rowHtml);
-                      });
-                    } else {
-                      console.error('Queue data is not an array');
-                    }
-                  }
-
-                  // Search and addToQueue
-                  function displaySearchResults(results) {
-                    var resultsTable = $('#searchResultsTable');
-                    resultsTable.empty();
-
-                    results.forEach(function(item) {
-                        var songLink = $('<a>').attr('href', item.external_urls.spotify).text(item.name);
-                        var songName = $('<td>').append(songLink);
-                        var artistName = $('<td>').text(item.artists[0].name);
-
-                        var actionTd = $('<td>');
-                        var isNickelback = item.artists.some(artist => artist.name.toLowerCase() === 'nickelback');
-
-                        if (isNickelback || item.explicit) {
-                            var explicitLabel = $('<span>').addClass('badge bg-danger').text('Explicit');
-                            actionTd.append(explicitLabel);
-                        } else {
-                            var addToQueueButton = $('<button>').addClass('btn btn-sm btn-success').text('Add to Queue');
-                            addToQueueButton.on('click', function() {
-                                var confirmQueue = confirm('Are you sure you want to add this song to the queue?');
-                                if (confirmQueue) {
-                                    ws.send(JSON.stringify({ action: 'add-to-queue', trackUri: item.uri, userName: document.cookie }));
-                                    
-                                }
-                            });
-                            actionTd.append(addToQueueButton);
-                        }
-
-                        var tr = $('<tr>').append(songName, artistName, actionTd);
-                        resultsTable.append(tr);
-                    });
-                  }
-
-                  $('#searchButton').on('click', function() {
-                    var searchQuery = $('#searchInput').val().trim();
-                    if (searchQuery.length > 0) {
-                      ws.send(JSON.stringify({ action: 'search', query: searchQuery }));
-                      $('#searchInput').val('');
-                    }
-                  });
-
-                  $('#searchInput').on('keypress', function(event) {
-                    if (event.which === 13) {
-                      var searchQuery = $(this).val().trim();
-                      if (searchQuery.length > 0) {
-                        ws.send(JSON.stringify({ action: 'search', query: searchQuery }));
-                        $(this).val('');
-                      }
-                    }
-                  });
-                  
-                  $('#saveUsernameButton').on('click', function() {
-                    const username = $('#usernameInput').val().trim();
-                    if (username) {
-                      document.cookie = `username=${username};path=/;max-age=86400`; // Expires in 1 day
-                      $('#usernameInput').closest('.input-group').hide();
-                    }
-                  });
-                  
-                  $('#usernameInput').on('keypress', function(event) {
-                    if (event.which === 13) {
-                      const username = $(this).val().trim();
-                      if (username) {
-                        document.cookie = `username=${username};path=/;max-age=86400`; // Expires in 1 day
-                        $(this).closest('.input-group').hide(); 
-                      }
-                    }
-                  });
+              var tr = $('<tr>').append(songName, artistName, duration, actionTd);
+              resultsTable.append(tr);
+          });
+      }
 
 
+      $('#searchButton').on('click', function() {
+        var username = document.cookie.replace(/(?:(?:^|.*;\s*)username\s*\=\s*([^;]*).*$)|^.*$/, "$1");
+        var csid = getCookie('connect.sid');
+        var searchQuery = $('#searchInput').val().trim();
+        if (searchQuery.length > 0) {
+          ws.send(JSON.stringify({ action: 'search', type, query: searchQuery, username: username , csid:csid }));
+          $('#searchInput').val('');
+        }
+      });
 
-                  $('#resetPlaylistForm').on('click', function() {
-                      $('#playlistInput').closest('.input-group').removeClass('d-none');
-                      $('.additional-inputs').addClass('d-none');
-                      $('.playlist-info').addClass('d-none');
-                      $('#playlistInput').val('');
-                      $('#userNameInput').val('');
-                      $('#playlistNameInput').val('');
-                      $('#playlistResultsTable').empty();
-                      $('#totalCount').text('Total Songs: 0');
-                      $('#explicitCount').text('Total Explicit Songs: 0');
-                      $('#nonExplicitCount').text('Songs to be added: 0');
-                      $('#submitPlaylistButton').prop('disabled', true);
-                  });
+      $('#searchInput').on('keypress', function(event) {
+        var username = document.cookie.replace(/(?:(?:^|.*;\s*)username\s*\=\s*([^;]*).*$)|^.*$/, "$1");
+        var csid = getCookie('connect.sid');
+        if (event.which === 13) {
+          var searchQuery = $(this).val().trim();
+          if (searchQuery.length > 0) {
+            ws.send(JSON.stringify({ action: 'search', query: searchQuery, username: username , csid:csid }));
+            $(this).val('');
+          }
+        }
+      });
 
-                  function displayPlaylistTracks(playlistItems) {
-                    var playlistTableBody = $('#playlistResultsTable');
-                    playlistTableBody.empty();
+      //- // Updated submitSearch function to include type
+      //- function submitSearch(query, type = 'track') { // Default type is 'track'
+      //-     var username = getCookie('username'); // Assuming getCookie is a function you've defined
+      //-     var csid = getCookie('connect.sid');
+      //-     if (query.length > 0) {
+      //-         ws.send(JSON.stringify({ action: 'search', query, type, username, csid }));
+      //-     }
+      //- }
 
-                    var totalCount = 0;
-                    var explicitCount = 0;
-                    var nonExplicitCount = 0;
-                    var nonExplicitTracks = [];
+      //- // Updated Click Event Handler for .clickable-text
+      //- $(document).on('click', '.clickable-text', function() {
+      //-     var text = $(this).text();
+      //-     var type = $(this).data('type'); // Retrieve the type
+      //-     $('#searchInput').val(text);
+      //-     submitSearch(text, type); // Pass the type to the submitSearch function
+      //- });
 
-                    if (Array.isArray(playlistItems)) {
-                      totalCount = playlistItems.length;
+      // Function to submit the search
+      function submitSearch() {
+        var searchQuery = $('#searchInput').val().trim();
+        var username = document.cookie.replace(/(?:(?:^|.*;\s*)username\s*\=\s*([^;]*).*$)|^.*$/, "$1");
+        var csid = getCookie('connect.sid');
+        if (searchQuery.length > 0) {
+          ws.send(JSON.stringify({ action: 'search', query: searchQuery, username: username , csid:csid }));
+          // Optionally, clear the search input after submission
+          // $('#searchInput').val('');
+        }
+      }
 
-                      playlistItems.forEach(function(trackItem) {
-                        var track = trackItem.track;
-                        if (!track.explicit) {
-                            var rowHtml = `<tr>
-                                            <td>${track.name}</td>
-                                            <td>${track.artists.map(artist => artist.name).join(", ")}</td>
-                                            <td>${formatTrackDuration(track.duration_ms)}</td>
-                                            <td>${track.explicit ? '<span class="text-danger">Explicit</span>' : '<span class="text-success">Clean</span>'}</td>
-                                          </tr>`;
-                            playlistTableBody.append(rowHtml);
-                            nonExplicitCount++;
-                            nonExplicitTracks.push(track);
-                        } else {
-                            explicitCount++;
-                        }
-                    });
-                    
-                    $('#totalCount').text(`Total Songs: ${totalCount}`);
-                    $('#explicitCount').text(`Total Explicit Songs: ${explicitCount}`);
-                    $('#nonExplicitCount').text(`Songs to be added: ${nonExplicitCount}`);
-                    if (nonExplicitCount > 0) {
-                        $('#submitPlaylistButton').prop('disabled', false);
-                    }
-                  } else {
-                      console.error('Playlist data is not an array', playlistItems);
-                  }
+      // Updated Click Event Handler for .clickable-text
+      $(document).on('click', '.clickable-text', function() {
+        // 
 
-                  function submitPlaylist() {
-                    var userName = $('#userNameInput').val().trim();
-                    var playlistName = $('#playlistNameInput').val().trim();
+        var text = $(this).text();
+        $('#searchInput').val(text);
+        submitSearch(); // Trigger the search
+      });
+      
+      $('#saveUsernameButton').on('click', function() {
+        const username = $('#usernameInput').val().trim();
+        const csid = getCookie('connect.sid');
+        if (username) {
+          //- $(this).prop('disabled', true); 
+          ws.send(JSON.stringify({ action: 'login', username: username , csid: csid}));
+          //- location.reload();
+          // Do not set the cookie here
+        }
+      });
 
+      $('#usernameInput').on('keypress', function(event) {
+        const csid = getCookie('connect.sid');
+        if (event.which === 13) {
+          const username = $(this).val().trim();
+          if (username) {
+            //- $('#saveUsernameButton').prop('disabled', true); 
+            ws.send(JSON.stringify({ action: 'login', username: username , csid: csid}));
+            //- location.reload();
+          }
+        }
+      });
 
-                    if (userName.length > 0 && playlistName.length > 0) {
-                        ws.send(JSON.stringify({
-                            action: 'submit-playlist',
-                            user: userName,
-                            playlistName: playlistName,
-                            tracks: nonExplicitTracks
-                        }));
-                    } else {
-                        alert('Please enter both user name and playlist name.');
-                    }
-                  }
-                  // Playlist event listeners
-                  $('#submitPlaylistButton').off('click').on('click', submitPlaylist);
+      //- function resetPlaylistForm() {
+      //-   $('#playlistInput').closest('.input-group').removeClass('d-none');
+      //-   $('.additional-inputs').addClass('d-none');
+      //-   $('.playlist-info').addClass('d-none');
+      //-   $('#playlistInput').val('');
+      //-   $('#userNameInput').val('');
+      //-   $('#playlistResultsTable').empty();
+      //-   $('#totalCount').text('Total Songs: 0');
+      //-   $('#explicitCount').text('Total Explicit Songs: 0');
+      //-   $('#nonExplicitCount').text('Songs to be added: 0');
+      //-   $('#submitPlaylistButton').prop('disabled', true);
+      //- }
 
-                  $('#userNameInput, #playlistNameInput').off('keypress').on('keypress', function(event) {
-                        if (event.which === 13) {
-                            submitPlaylist();
-                        }
-                    });
-                  };
-
-                  $('#playlistButton').on('click', function() {
-                    var playlistUrl = $('#playlistInput').val().trim();
-                    if (playlistUrl.length > 0) {
-                      ws.send(JSON.stringify({ action: 'get-playlist', playlistId: playlistUrl }));
-                      $('#playlistInput').closest('.input-group').addClass('d-none');
-                      $('.additional-inputs').removeClass('d-none');
-                      $('.playlist-info').removeClass('d-none');
-                    }
-                  });
-
-                  $('#playlistInput').on('keypress', function(event) {
-                      if (event.which === 13) { 
-                          var playlistUrl = $('#playlistInput').val().trim();
-                          if (playlistUrl.length > 0) {
-                              ws.send(JSON.stringify({ action: 'get-playlist', playlistId: playlistUrl }));
-                              $('#playlistInput').closest('.input-group').addClass('d-none');
-                              $('.additional-inputs').removeClass('d-none');
-                              $('.playlist-info').removeClass('d-none');
-                          }
-                      }
-                  });
-                  // uploaded tab
-                  $('a[href="#playlists"]').on('click', function() {
-                    if (ws && ws.readyState === WebSocket.OPEN) {
-                      ws.send(JSON.stringify({ action: 'get-playlists' }));
-                    }
-                  });
-
-                  function displayPlaylists(playlists) {
-                    var playlistsTableBody = $('#playlistsTableBody');
-                    playlistsTableBody.empty();
-                    playlists.forEach(function(playlist) {
-                      var rowHtml = `<tr>
-                                      <td>${playlist.playlistName}</td>
-                                      <td>${playlist.userName}</td>
-                                      <td>${playlist.tracks.length}</td>
-                                      // Add more data as needed
-                                    </tr>`;
-                      playlistsTableBody.append(rowHtml);
-                    });
-                  }
-                  function queueSong(songUri) {
-                      const username = getCookie('username');
-                      if (ws && ws.readyState === WebSocket.OPEN) {
-                          ws.send(JSON.stringify({ action: 'add-to-queue', trackUri: songUri, username: username }));
-                      }
-                  }
-
-                  // Helper function to get cookie value
-                  function getCookie(name) {
-                      const value = `; ${document.cookie}`;
-                      const parts = value.split(`; ${name}=`);
-                      if (parts.length === 2) return parts.pop().split(';').shift();
-                  }
-
-                  function checkUsernameAndToggleUI() {
-                      var username = getCookie('username');
-                      if (username) {
-                        $('#usernameInputSection').hide();
-                        $('#searchInputSection').show();
-                        $('#displayUsername').text(`Username: ${username}`).show();
-                        $('#searchResultsTable').show();
-                      } else {
-                        $('#usernameInputSection').show();
-                        $('#searchInputSection').hide();
-                        $('#displayUsername').hide();
-                        //#searchResultsTable
-                        $('#searchResultsTable').hide();
-                      }
-                    }
-
-                    $('#saveUsernameButton').on('click', function() {
-                      const username = $('#usernameInput').val().trim();
-                      if (username) {
-                        document.cookie = `username=${username};path=/;max-age=86400`; // Expires in 1 day
-                        checkUsernameAndToggleUI();
-                      }
-                    });
-
-                    $('#usernameInput').on('keypress', function(event) {
-                      if (event.which === 13) {
-                        $('#saveUsernameButton').click();
-                      }
-                    });
+      //- $('#resetPlaylistForm').on('click', resetPlaylistForm);
+      //- $('#submitPlaylistButton').on('click', resetPlaylistForm);
 
 
+      //- function displayPlaylistTracks(playlistData) {
+      //-   console.log('playlist name is ', playlistData.name)
+      //-   var playlistTableBody = $('#playlistResultsTable');
+      //-   playlistTableBody.empty();
+        
+      //-   let playlistItems = playlistData.tracks.items;
+      //-   var totalCount = 0;
+      //-   var explicitCount = 0;
+      //-   var nonExplicitCount = 0;
+      //-   var nonExplicitTracks = [];
 
+      //-   if (Array.isArray(playlistItems)) {
+      //-     totalCount = playlistItems.length;
 
-                  checkUsernameAndToggleUI();
-                  startWebSocket();
-                });
+      //-     playlistItems.forEach(function(trackItem) {
+      //-       //- console.log('trackItem', trackItem);
+      //-       var track = trackItem.track;
+      //-       if (!track.explicit) {
+      //-           var rowHtml = `<tr>
+      //-                           <td>${track.name}</td>
+      //-                           <td>${track.artists.map(artist => artist.name).join(", ")}</td>
+      //-                           <td>${formatTrackDuration(track.duration_ms)}</td>
+      //-                           <td>${track.explicit ? '<span class="text-danger">Explicit</span>' : '<span class="text-success">Clean</span>'}</td>
+      //-                         </tr>`;
+      //-           playlistTableBody.append(rowHtml);
+      //-           nonExplicitCount++;
+      //-           nonExplicitTracks.push(track);
+      //-       } else {
+      //-           explicitCount++;
+      //-       }
+      //-   });
+      //-   $('#playlistName').text('Playlist Name: ' + playlistData.name);
+      //-   $('#totalCount').text(`Total Songs: ${totalCount}`);
+      //-   $('#explicitCount').text(`Total Explicit Songs: ${explicitCount}`);
+      //-   $('#nonExplicitCount').text(`Songs to be added: ${nonExplicitCount}`);
+      //-   if (nonExplicitCount > 0) {
+      //-       $('#submitPlaylistButton').prop('disabled', false);
+      //-   }
+      //- } else {
+      //-     console.error('Playlist data is not an array', playlistItems);
+      //- }
+      
+      // kinda working
+      //- function displayPlaylistTracks(playlistData) {
+      //-     console.log('playlist name is ', playlistData.name)
+      //-     var playlistTableBody = $('#playlistResultsTable');
+      //-     playlistTableBody.empty();
+          
+      //-     let playlistItems = playlistData.tracks.items;
+      //-     var totalCount = 0;
+      //-     var explicitCount = 0;
+      //-     var nonExplicitCount = 0;
+      //-     var nonExplicitTracks = [];
 
+      //-     if (Array.isArray(playlistItems)) {
+      //-         totalCount = playlistItems.length;
+
+      //-         playlistItems.forEach(function(trackItem) {
+      //-             var track = trackItem.track;
+      //-             var isTooLong = track.duration_ms > 480000; // Example duration check, adjust as needed
+
+      //-             // Create Add to Queue Button
+      //-             var addToQueueButton = $('<button>').addClass('btn btn-sm btn-success').text('Add to Queue');
+      //-             if (track.explicit || isTooLong) {
+      //-                 addToQueueButton.prop('disabled', true);
+      //-                 addToQueueButton.text(track.explicit ? 'Explicit' : 'Too long.');
+      //-                 addToQueueButton.addClass('btn-danger'); // Make explicit button red
+      //-             } else {
+      //-                 addToQueueButton.on('click', function() {
+      //-                     var csid = getCookie('connect.sid');
+      //-                     var confirmQueue = confirm('Are you sure you want to add this song to the queue?');
+      //-                     if (confirmQueue) {
+      //-                         console.log('username', username);
+      //-                         ws.send(JSON.stringify({ action: 'add-to-queue', trackUri: track.uri, username: username, csid }));
+      //-                     }
+      //-                 });
+      //-             }
+
+      //-             var rowHtml = `<tr>
+      //-                             <td>${track.name}</td>
+      //-                             <td>${track.artists.map(artist => artist.name).join(", ")}</td>
+      //-                             <td>${formatTrackDuration(track.duration_ms)}</td>
+      //-                             <td>${track.explicit ? '<span class="badge bg-danger">Explicit</span>' : '<span class="text-success">Clean</span>'}</td>
+      //-                             <td>${addToQueueButton[0].outerHTML}</td>
+      //-                           </tr>`;
+      //-             playlistTableBody.append(rowHtml);
+      //-             if (!track.explicit) {
+      //-                 nonExplicitCount++;
+      //-                 nonExplicitTracks.push(track);
+      //-             } else {
+      //-                 explicitCount++;
+      //-             }
+      //-         });
+
+      //-         $('#playlistName').text('Playlist Name: ' + playlistData.name);
+      //-         $('#totalCount').text(`Total Songs: ${totalCount}`);
+      //-         $('#explicitCount').text(`Total Explicit Songs: ${explicitCount}`);
+      //-         $('#nonExplicitCount').text(`Songs to be added: ${nonExplicitCount}`);
+      //-         if (nonExplicitCount > 0) {
+      //-             $('#submitPlaylistButton').prop('disabled', false);
+      //-         }
+      //-     } else {
+      //-         console.error('Playlist data is not an array', playlistItems);
+      //-     }
+      
+    
+
+      
+      //- function submitPlaylist() {
+      //-   var userName = getCookie('username');
+      //-   let playlistName = playlistData.name;
+      //-   console.log(userName + ' submitted playlist ', playlistData.name)
+
+      //-   if (userName.length > 0 && playlistName.length > 0) {
+      //-       ws.send(JSON.stringify({
+      //-           action: 'submit-playlist',
+      //-           user: userName,
+      //-           playlistName: playlistName,
+      //-           tracks: nonExplicitTracks
+      //-       }));
+
+      //-       // Clear the playlist-related elements
+      //-       $('#playlistResultsTable').empty();
+      //-       $('#playlistName').text('');
+      //-       $('#totalCount').text('Total Songs: 0');
+      //-       $('#explicitCount').text('Total Explicit Songs: 0');
+      //-       $('#nonExplicitCount').text('Songs to be added: 0');
+      //-       $('#submitPlaylistButton').prop('disabled', true);
+
+      //-       // Show the playlist input field and hide other playlist-related elements
+      //-       $('#playlistInput').closest('.input-group').removeClass('d-none');
+      //-       $('.additional-inputs').addClass('d-none');
+      //-       $('.playlist-info').addClass('d-none');
+      //-   } else {
+      //-       alert('Please enter both user name and playlist name.');
+      //-   }
+      //- };
+
+      //- // Playlist event listeners
+      //- $('#submitPlaylistButton').off('click').on('click', submitPlaylist);
+
+      //- $('#userNameInput').off('keypress').on('keypress', function(event) {
+      //-     if (event.which === 13) {
+      //-         submitPlaylist();
+      //-     }
+      //- });
+    
+
+      //- $('#playlistButton').on('click', function() {
+      //-   var playlistUrl = $('#playlistInput').val().trim();
+      //-   if (playlistUrl.length > 0) {
+      //-     ws.send(JSON.stringify({ action: 'get-playlist', playlistId: playlistUrl }));
+      //-     $('#playlistInput').closest('.input-group').addClass('d-none');
+      //-     $('.additional-inputs').removeClass('d-none');
+      //-     $('.playlist-info').removeClass('d-none');
+      //-   }
+      //- });
+
+      //- $('#playlistInput').on('keypress', function(event) {
+      //-     if (event.which === 13) { 
+      //-         var playlistUrl = $('#playlistInput').val().trim();
+      //-         if (playlistUrl.length > 0) {
+      //-             ws.send(JSON.stringify({ action: 'get-playlist', playlistId: playlistUrl }));
+      //-             $('#playlistInput').closest('.input-group').addClass('d-none');
+      //-             $('.additional-inputs').removeClass('d-none');
+      //-             $('.playlist-info').removeClass('d-none');
+      //-         }
+      //-     }
+      //- });
+      //- // uploaded tab
+      //- $('a[href="#playlists"]').on('click', function() {
+      //-   if (ws && ws.readyState === WebSocket.OPEN) {
+      //-     ws.send(JSON.stringify({ action: 'get-playlists' }));
+      //-   }
+      //- });
+
+      //- function displayPlaylists(playlists) {
+      //-   var playlistsTableBody = $('#playlistsTableBody');
+      //-   playlistsTableBody.empty();
+      //-   playlists.forEach(function(playlist) {
+      //-     var rowHtml = `<tr>
+      //-                     <td>${playlist.playlistName}</td>
+      //-                     <td>${playlist.userName}</td>
+      //-                     <td>${playlist.tracks.length}</td>
+      //-                     // Add more data as needed
+      //-                   </tr>`;
+      //-     playlistsTableBody.append(rowHtml);
+      //-   });
+      //- }
+
+      function getCookie(name) {
+          const value = `; ${document.cookie}`;
+          const parts = value.split(`; ${name}=`);
+          if (parts.length === 2) return parts.pop().split(';').shift();
+      }
+
+      function checkUsernameAndToggleUI() {
+          var username = getCookie('username');
+          if (username) {
+              $('#usernameInputSection').hide();
+              $('#searchInputSection').show();
+              $('#displayUsername').text(`Username: ${username}`).show();
+              $('#search').show();
+              $('#playlist').show();
+              $('#playlists').show();
+          } else {
+              $('#usernameInputSection').show();
+              $('#searchInputSection').hide();
+              $('#displayUsername').hide();
+              $('#search').hide();
+              $('#playlist').hide();
+              $('#playlists').hide();
+          }
+      }
+
+      $(document).on('click', '.clickable-text', function() {
+        var text = $(this).text();
+        $('#searchInput').val(text);
+      });
+
+      checkUsernameAndToggleUI();
+      startWebSocket();
+    });
