@@ -1,0 +1,250 @@
+doctype html
+html
+  head
+    title Admin Page
+    meta(name='viewport', content='width=device-width, initial-scale=1, shrink-to-fit=no')
+    link(rel='stylesheet', href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css')
+    script(src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js")
+    style.
+      :root {
+        --hacker-green: #0f0;
+        --dark-bg: #121212;
+      }
+      body {
+        background-color: var(--dark-bg);
+        color: var(--hacker-green);
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 1rem;
+      }
+      .main-container {
+        margin-top: 2%;
+        text-align: center;
+      }
+      .control-panel {
+        text-align: center;
+        background-color: #000;
+        padding: 20px;
+        margin-bottom: 20px;
+        border-radius: 8px;
+        color: var(--hacker-green);
+        box-shadow: 0 0 10px var(--hacker-green);
+      }
+      .button, .control-button {
+        padding: 10px 20px;
+        margin: 5px;
+        font-size: 16px;
+        cursor: pointer;
+        border: none;
+        border-radius: 5px;
+        color: #000;
+        background-color: var(--hacker-green);
+        box-shadow: 0 0 5px var(--hacker-green);
+      }
+      .button-on, .button-off {
+        box-shadow: 0 0 5px red;
+      }
+      .panel {
+        background-color: #000;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        color: var(--hacker-green);
+        box-shadow: 0 0 10px var(--hacker-green);
+      }
+      .panel-title {
+        margin-bottom: 15px;
+        text-shadow: 0 0 5px var(--hacker-green);
+      }
+      .btn-sm {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.875rem;
+        box-shadow: 0 0 5px var(--hacker-green);
+      }
+    .container.main-container
+      .panel
+        .info-window.bg-dark.text-white.p-3.mb-3.border.border-light.rounded
+          h4.mb-3 Server Info
+            p#userInfo Current Users: #{totalUserCount}
+            p#queueInfo Current Songs Queue: #{grantedUsersCountTotalQueuedSongs}
+          if appIsActive
+            p#appStatusInfo App Status: Online
+          else
+            p#appStatusInfo App Status: Offline
+      .control-panel
+        h2 Control Panel
+        button.button.control-button(onclick="resetAllSongs()") Reset All Songs
+        button.button.control-button(onclick="dumpHistory()") Dump History
+        button.button.control-button(onclick="dumpTokens()") Dump Tokens
+        button#buttonOn.button(onclick="startApp()") Turn App On
+        button#buttonOff.button(onclick="stopApp()") Turn App Off
+        //- button.btn.btn-primary(type='button' id='testWebSocketButton') DO NOT PUSH THIS BUTTON!!!!!
+
+      .row#appControls
+        .col-md-12
+          .panel
+            h3.panel-title Awaiting Access
+            .list-group
+              each user in requestingUsers
+                .list-group-item.d-flex.justify-content-between.align-items-center
+                  span #{user.username}
+                  span #{user.realname}
+                  .btn-group.pull-right
+                    button.btn.btn-sm.btn-success(onclick="allowAccess('" + user.username + "')") Permit
+                    button.btn.btn-sm.btn-danger(onclick="deleteUser('" + user.username + "')") Delete
+
+      .row
+        .col-md-12
+          .panel
+            h3.panel-title Granted Access
+            .list-group
+              each user in grantedUsers
+                .list-group-item.d-flex.justify-content-between.align-items-center
+                  span #{user.username}
+                  span #{user.realname}
+                  .btn-group.pull-right
+                    button.btn.btn-sm.btn-danger(onclick="removeAccess('" + user.username + "')") Revoke
+                    button.btn.btn-sm.btn-danger(onclick="deleteUser('" + user.username + "')") Delete
+    script.
+      var ws;
+
+      function startWebSocket() {
+        ws = new WebSocket('wss://spotify.lucasfarmer.com');
+        ws.onopen = function() {
+          console.log('WebSocket connection established');
+          setInterval(function() {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ action: 'ping' }));
+              console.log('Sent ping message');
+            }
+          }, 30000);
+
+          
+
+          ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+
+            //- if (data.type === 'accessUpdated') {
+            //-   console.log('Received accessUpdated message:', data);
+            //-   updateAccessUI(data.username, data.accessGranted);
+            //- }
+          };
+
+
+
+          //- $('#testWebSocketButton').on('click', function() {
+          //-   if (ws && ws.readyState === WebSocket.OPEN) {
+          //-     ws.send(JSON.stringify({ action: 'resetPlayedSongs' }));
+          //-     console.log('Sent resetPlayedSongs message');
+          //-   }
+          //- });
+
+          ws.onmessage = function(event) {
+            console.log('Received message:', event.data);
+            //- switch(data.type) {
+            //-   case 'test':
+            //-     console.log('test');
+            //-     break;
+            //- }
+
+            const data = JSON.parse(event.data);
+
+            if (data.type === 'accessUpdated') {
+              updateAccessUI(data.username, data.accessGranted);
+            }
+          };
+        };
+      }
+
+      function resetAllSongs() {
+        console.log('Sending message: resetAllSongs');
+        confirm('Are you sure you want to reset all songs?');
+        ws.send(JSON.stringify({ action: 'resetPlayedSongs' }));
+      }
+
+      function dumpHistory(){
+        confirm('Are you sure you want to dump the history');
+        ws.send(JSON.stringify({ action: 'dump-history' }));
+      };
+
+      function markAllSongs() {
+        console.log('Sending message: markAllSongs');
+        confirm('Are you sure you want to mark all songs as played?');
+        ws.send(JSON.stringify({ action: 'markAllPlayed' }));
+      }
+
+      document.addEventListener("DOMContentLoaded", startWebSocket);
+
+      document.getElementById('buttonOn').addEventListener('click', function() {
+        console.log('Sending message: startApp');
+        ws.send(JSON.stringify({ action: 'startApp', appIsActive: true }));
+        window.location.reload();
+      });
+
+      document.getElementById('buttonOff').addEventListener('click', function() {
+        console.log('Sending message: stopApp');
+        ws.send(JSON.stringify({ action: 'stopApp', appIsActive: false }));
+        window.location.reload();
+      });
+
+      function allowAccess(username) {
+        console.log('Allowing access for user:', username);
+        ws.send(JSON.stringify({ action: 'allowAccess', username: username }));
+        window.location.reload();
+      }
+
+
+      function removeAccess(username) {
+        console.log('Removing access for user:', username);
+        ws.send(JSON.stringify({ action: 'removeAccess', username: username }));
+        window.location.reload();
+      }
+
+
+      function deleteUser(username) {
+        console.log('Deleting user:', username);
+        ws.send(JSON.stringify({ action: 'deleteUser', username: username }));
+        window.location.reload();
+      }
+
+      function dumpTokens() {
+        console.log('Dumping tokens');
+        confirm('Are you sure you want to dump tokens?');
+        ws.send(JSON.stringify({ action: 'dump-tokens' }));
+      }
+      
+      function updateAccessUI(username, accessGranted) {
+        // Assuming each user item has an id like 'user-USERNAME'
+        const userElementId = 'user-' + username;
+        const userElement = document.getElementById(userElementId);
+
+        if (!userElement) {
+          console.warn('User element not found:', username);
+          return;
+        }
+
+        if (accessGranted) {
+          // Move user to 'Users with Access' list
+          const grantedAccessList = document.getElementById('grantedAccessList'); // Assuming this is the ID of your 'Users with Access' list
+          grantedAccessList.appendChild(userElement);
+
+          // Update button in user element for 'Remove Access' functionality
+          const accessButton = userElement.querySelector('.access-control-btn');
+          accessButton.textContent = 'Remove Access';
+          accessButton.classList.remove('btn-success');
+          accessButton.classList.add('btn-danger');
+          accessButton.onclick = function() { removeAccess(username); };
+        } else {
+          // Move user to 'Requesting Access' list
+          const requestingAccessList = document.getElementById('requestingAccessList'); // Assuming this is the ID of your 'Requesting Access' list
+          requestingAccessList.appendChild(userElement);
+
+          // Update button in user element for 'Allow Access' functionality
+          const accessButton = userElement.querySelector('.access-control-btn');
+          accessButton.textContent = 'Allow Access';
+          accessButton.classList.remove('btn-danger');
+          accessButton.classList.add('btn-success');
+          accessButton.onclick = function() { allowAccess(username); };
+        }
+      }
+
+
